@@ -24,7 +24,7 @@ from ..domain import (
     usable_number,
     QuoteFailure,
     Quote,
-    QuoteSet,
+    Quotations,
     SymbolLookup,
     SymbolWarning,
 )

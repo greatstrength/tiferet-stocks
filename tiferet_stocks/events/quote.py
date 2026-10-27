@@ -10,7 +10,7 @@ from tiferet.events import DomainEvent
 
 # ** app
 from .. import assets as a
-from ..domain import QuoteSet
+from ..domain import Quotations
 from ..interfaces import PriceService
 
 # *** events
@@ -38,7 +38,7 @@ class GetQuotes(DomainEvent):
 
     # * method: execute
     @DomainEvent.parameters_required(['symbols'])
-    def execute(self, symbols: List[str], **kwargs) -> QuoteSet:
+    def execute(self, symbols: List[str], **kwargs) -> Quotations:
         '''
         Get quotes; partial failure is data, and only a total failure raises QUOTES_UNAVAILABLE.
 
@@ -47,27 +47,27 @@ class GetQuotes(DomainEvent):
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: The quotes by requested id, with symbols, warnings and failures.
-        :rtype: QuoteSet
+        :rtype: Quotations
         '''
 
         # Treat a single id string as one id.
         if isinstance(symbols, str):
             symbols = [symbols]
 
-        # Return an empty quote set when no ids are requested.
+        # Return empty quotations when no ids are requested.
         if not symbols:
-            return QuoteSet()
+            return Quotations()
 
         # Get the quotes from the configured provider.
-        quote_set = self.price_service.get_quotes(symbols)
+        quotations = self.price_service.get_quotes(symbols)
 
         # Raise the catalogued error only when no symbol produced a quote.
         self.verify(
-            bool(quote_set.quotes),
+            bool(quotations.quotes),
             a.QUOTES_UNAVAILABLE_ID,
             symbols=', '.join(dict.fromkeys(symbols)),
-            failures=[failure.model_dump() for failure in quote_set.failures],
+            failures=[failure.model_dump() for failure in quotations.failures],
         )
 
-        # Return the quote set.
-        return quote_set
+        # Return the quotations.
+        return quotations

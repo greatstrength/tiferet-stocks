@@ -1,4 +1,4 @@
-"""Tiferet Stocks Price Domain Models"""
+"""Tiferet Stocks Quotations Domain Models"""
 
 # *** imports
 
@@ -15,8 +15,8 @@ from .symbol import Symbol, SymbolWarning
 
 # *** models
 
-# ** model: quote_set
-class QuoteSet(DomainObject):
+# ** model: quotations
+class Quotations(DomainObject):
     '''
     The answer to one quote request: every requested id appears once, as a quote or as a failure.
     '''

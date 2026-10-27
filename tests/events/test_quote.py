@@ -12,7 +12,7 @@ from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
-from tiferet_stocks.domain import Quote, QuoteFailure, QuoteSet
+from tiferet_stocks.domain import Quote, QuoteFailure, Quotations
 from tiferet_stocks.events import GetQuotes
 from tiferet_stocks.interfaces import PriceService
 
@@ -32,21 +32,21 @@ def price_service() -> mock.Mock:
 # ** test: get_quotes_partial_failure
 def test_get_quotes_partial_failure(price_service: mock.Mock) -> None:
     '''
-    Test that a partial failure returns the quote set with its failures and does not raise.
+    Test that a partial failure returns the quotations with its failures and does not raise.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = QuoteSet(
+    price_service.get_quotes.return_value = Quotations(
         quotes={'AAPL': Quote(symbol_id='AAPL', price=251.5, source='static')},
         failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
     )
 
-    quote_set = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['AAPL', 'NOPE'])
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['AAPL', 'NOPE'])
 
-    assert list(quote_set.quotes) == ['AAPL']
-    assert quote_set.failures[0].symbol_id == 'NOPE'
+    assert list(quotations.quotes) == ['AAPL']
+    assert quotations.failures[0].symbol_id == 'NOPE'
     price_service.get_quotes.assert_called_once_with(['AAPL', 'NOPE'])
 
 # ** test: get_quotes_all_failed
@@ -58,7 +58,7 @@ def test_get_quotes_all_failed(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = QuoteSet(
+    price_service.get_quotes.return_value = Quotations(
         failures=[
             QuoteFailure(symbol_id='NOPE', reason='not_found'),
             QuoteFailure(symbol_id='GONE', reason='timeout', attempts=2),
@@ -81,7 +81,7 @@ def test_get_quotes_single_string(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = QuoteSet(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
+    price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
 
     DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols='SPY')
 
@@ -96,7 +96,7 @@ def test_get_quotes_depends_only_on_price_service(price_service: mock.Mock) -> N
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = QuoteSet(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
+    price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
 
     with mock.patch('builtins.open') as patched_open:
         DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['SPY'])
@@ -107,15 +107,15 @@ def test_get_quotes_depends_only_on_price_service(price_service: mock.Mock) -> N
 # ** test: get_quotes_empty_symbols
 def test_get_quotes_empty_symbols(price_service: mock.Mock) -> None:
     '''
-    Test that an empty symbol list returns an empty quote set without calling the provider.
+    Test that an empty symbol list returns empty quotations without calling the provider.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
     '''
 
-    quote_set = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=[])
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=[])
 
-    assert quote_set.quotes == {} and quote_set.failures == []
+    assert quotations.quotes == {} and quotations.failures == []
     price_service.get_quotes.assert_not_called()
 
 # *** testers

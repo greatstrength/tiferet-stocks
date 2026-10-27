@@ -15,7 +15,7 @@ from tiferet_stocks.domain import (
     usable_number,
     Quote,
     QuoteFailure,
-    QuoteSet,
+    Quotations,
 )
 
 # *** tests
@@ -131,16 +131,16 @@ def test_quote_requires_price_and_source() -> None:
 # ** test: quote_set_defaults
 def test_quote_set_defaults() -> None:
     '''
-    Test that an empty quote set has no quotes, symbols, warnings or failures.
+    Test that empty quotations has no quotes, symbols, warnings or failures.
     '''
 
-    quote_set = QuoteSet()
+    quotations = Quotations()
 
-    assert quote_set.quotes == {}
-    assert quote_set.symbols == {}
-    assert quote_set.warnings == []
-    assert quote_set.failures == []
-    assert quote_set.fetched_at is None
+    assert quotations.quotes == {}
+    assert quotations.symbols == {}
+    assert quotations.warnings == []
+    assert quotations.failures == []
+    assert quotations.fetched_at is None
 
 # *** testers
 

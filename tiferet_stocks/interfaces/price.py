@@ -10,7 +10,7 @@ from typing import List
 from tiferet.interfaces import Service
 
 # ** app
-from ..mappers import QuoteSet
+from ..mappers import Quotations
 
 # *** interfaces
 
@@ -22,14 +22,14 @@ class PriceService(Service):
 
     # * method: get_quotes
     @abstractmethod
-    def get_quotes(self, symbols: List[str]) -> QuoteSet:
+    def get_quotes(self, symbols: List[str]) -> Quotations:
         '''
         Get the latest quote for each requested symbol id.
 
         :param symbols: The requested symbol ids (tickers).
         :type symbols: List[str]
         :return: The quotes by requested id, with symbols, warnings and failures.
-        :rtype: QuoteSet
+        :rtype: Quotations
         '''
         # Not implemented.
         raise NotImplementedError('get_quotes method is required for PriceService.')

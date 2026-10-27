@@ -34,7 +34,7 @@ from ..mappers import (
     usable_number,
     Quote,
     QuoteFailure,
-    QuoteSet,
+    Quotations,
     SymbolLookup,
     SymbolWarning,
     SymbolAggregate,
@@ -321,14 +321,14 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         ), None
 
     # * method: get_quotes
-    def get_quotes(self, symbols: List[str]) -> QuoteSet:
+    def get_quotes(self, symbols: List[str]) -> Quotations:
         '''
         Get the latest quote for each requested symbol id from the Yahoo chart endpoint.
 
         :param symbols: The requested symbol ids (tickers).
         :type symbols: List[str]
         :return: The quotes by requested id, with symbols, warnings and failures.
-        :rtype: QuoteSet
+        :rtype: Quotations
         '''
 
         # Record when the request started.
@@ -350,8 +350,8 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
             symbol_map[symbol_id] = symbol
             warnings.extend(symbol_warnings)
 
-        # Return the quote set.
-        return QuoteSet(
+        # Return the quotations.
+        return Quotations(
             quotes=quotes,
             symbols=symbol_map,
             warnings=warnings,

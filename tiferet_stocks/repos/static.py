@@ -20,7 +20,7 @@ from ..mappers import (
     usable_number,
     Quote,
     QuoteFailure,
-    QuoteSet,
+    Quotations,
 )
 
 # *** constants
@@ -69,14 +69,14 @@ class StaticPriceRepository(PriceService):
             self.prices.update((data or {}).get('prices', data or {}))
 
     # * method: get_quotes
-    def get_quotes(self, symbols: List[str]) -> QuoteSet:
+    def get_quotes(self, symbols: List[str]) -> Quotations:
         '''
         Get the fixed quote for each requested symbol id.
 
         :param symbols: The requested symbol ids (tickers).
         :type symbols: List[str]
         :return: The quotes by requested id, with a not_found failure for each unknown id.
-        :rtype: QuoteSet
+        :rtype: Quotations
         '''
 
         # Build a quote or a not_found failure for each distinct id.
@@ -109,8 +109,8 @@ class StaticPriceRepository(PriceService):
                 source=self.source,
             )
 
-        # Return the quote set.
-        return QuoteSet(
+        # Return the quotations.
+        return Quotations(
             quotes=quotes,
             failures=failures,
             fetched_at=datetime.now(timezone.utc).isoformat(),

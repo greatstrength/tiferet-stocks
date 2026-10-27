@@ -35,4 +35,4 @@ from .symbol import (
     SymbolWarning,
     SymbolLookup,
 )
-from .price import QuoteSet
+from .quotations import Quotations

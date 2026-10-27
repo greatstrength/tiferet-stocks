@@ -15,7 +15,7 @@ try:
         SymbolLookup,
         QuoteFailure,
         Quote,
-        QuoteSet,
+        Quotations,
     )
     from .interfaces import PriceService, SymbolLookupService
 except Exception as e:

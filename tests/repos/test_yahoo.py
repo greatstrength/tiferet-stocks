@@ -459,7 +459,7 @@ def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: m
 # ** test: get_quotes_carries_symbol_warnings
 def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
     '''
-    Test that an unmapped exchange is a soft warning on the quote set, not a failure.
+    Test that an unmapped exchange is a soft warning on the quotations, not a failure.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
