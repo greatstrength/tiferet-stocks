@@ -12,7 +12,7 @@ from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
-from tiferet_stocks.domain import PriceBar, PriceHistory, QuoteFailure
+from tiferet_stocks.domain import PriceBar, QuoteFailure
 from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.events import GetHistory
 from tiferet_stocks.interfaces import PriceService
