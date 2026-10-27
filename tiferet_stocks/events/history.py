@@ -63,8 +63,8 @@ class GetHistory(DomainEvent):
         self.verify(
             first is not None and (first.isoformat(), last.isoformat()) == (start, end),
             a.INVALID_HISTORY_RANGE_ID,
-            start=start,
-            end=end,
+            start=str(start),
+            end=str(end),
             detail='dates must be ISO 8601 dates (YYYY-MM-DD)',
         )
 
@@ -72,8 +72,8 @@ class GetHistory(DomainEvent):
         self.verify(
             first <= last,
             a.INVALID_HISTORY_RANGE_ID,
-            start=start,
-            end=end,
+            start=str(start),
+            end=str(end),
             detail='the start date is after the end date',
         )
 

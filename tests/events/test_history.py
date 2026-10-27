@@ -4,6 +4,7 @@
 
 # ** core
 import inspect
+from datetime import date
 from unittest import mock
 
 # ** infra
@@ -136,6 +137,21 @@ def test_get_history_invalid_range(price_service: mock.Mock, start: str, end: st
 
     with pytest.raises(TiferetError) as exc_info:
         run(price_service, symbol='AAPL', start=start, end=end)
+
+    assert exc_info.value.error_code == 'INVALID_HISTORY_RANGE'
+    price_service.get_history.assert_not_called()
+
+# ** test: get_history_date_objects
+def test_get_history_date_objects(price_service: mock.Mock) -> None:
+    '''
+    Test that date objects passed to execute directly raise INVALID_HISTORY_RANGE rather than a TypeError.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    with pytest.raises(TiferetError) as exc_info:
+        GetHistory(price_service=price_service).execute(symbol='AAPL', start=date(2026, 10, 19), end=date(2026, 10, 23))
 
     assert exc_info.value.error_code == 'INVALID_HISTORY_RANGE'
     price_service.get_history.assert_not_called()

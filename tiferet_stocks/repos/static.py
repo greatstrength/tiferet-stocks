@@ -5,7 +5,7 @@
 # ** core
 import csv
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List
 
 # ** infra
@@ -154,9 +154,16 @@ class StaticPriceRepository(PriceService):
             return PriceHistoryAggregate(symbol_id=symbol, start=start, end=end, failure=failure)
 
         # Build a bar for each row in range; a row with an unusable value is a bad_payload failure.
-        bars = []
+        bars = {}
         for row in rows:
             day = row.get('date') or ''
+            try:
+                iso_day = date.fromisoformat(day).isoformat()
+            except ValueError:
+                iso_day = None
+            if iso_day != day or day in bars:
+                failure = QuoteFailure(symbol_id=symbol, reason=BAD_PAYLOAD, detail=f'Static history row date {day!r} is not a unique ISO 8601 date.')
+                return PriceHistoryAggregate(symbol_id=symbol, start=start, end=end, failure=failure)
             if not start <= day <= end:
                 continue
             try:
@@ -168,12 +175,12 @@ class StaticPriceRepository(PriceService):
             if prices is None or not all(usable_number(value) for value in prices.values()) or (adj_close is not None and not usable_number(adj_close)):
                 failure = QuoteFailure(symbol_id=symbol, reason=BAD_PAYLOAD, detail=f'Static history row for {day} has an unusable value.')
                 return PriceHistoryAggregate(symbol_id=symbol, start=start, end=end, failure=failure)
-            bars.append(PriceBar(symbol_id=symbol, date=day, adj_close=adj_close, volume=volume, **prices))
+            bars[day] = PriceBar(symbol_id=symbol, date=day, adj_close=adj_close, volume=volume, **prices)
 
         # Return the bars oldest first.
         return PriceHistoryAggregate(
             symbol_id=symbol,
             start=start,
             end=end,
-            bars=sorted(bars, key=lambda bar: bar.date),
+            bars=[bars[day] for day in sorted(bars)],
         )

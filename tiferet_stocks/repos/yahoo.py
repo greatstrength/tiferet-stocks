@@ -4,7 +4,7 @@
 
 # ** core
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 import socket
 from http import client as http_client
 from typing import Any, Dict, List, Tuple
@@ -69,6 +69,9 @@ DEFAULT_QUOTE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?
 
 # ** constant: default_history_url
 DEFAULT_HISTORY_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval=1d'
+
+# ** constant: day_seconds
+DAY_SECONDS = 86400
 
 # ** constant: default_timeout
 DEFAULT_TIMEOUT = '10'
@@ -401,11 +404,15 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         timestamps = result.get('timestamp') or []
         if not timestamps:
             return [], None
+        if not isinstance(timestamps, list):
+            return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart result has no timestamp list.', attempts=attempts)
 
         # The bar series must line up with the timestamps.
         indicators = result.get('indicators') if isinstance(result.get('indicators'), dict) else {}
-        series = (indicators.get('quote') or [{}])[0]
-        adj_series = (indicators.get('adjclose') or [{}])[0]
+        quote_list = indicators.get('quote') or [{}]
+        adj_list = indicators.get('adjclose') or [{}]
+        series = quote_list[0] if isinstance(quote_list, list) else None
+        adj_series = adj_list[0] if isinstance(adj_list, list) else None
         if not isinstance(series, dict) or not isinstance(adj_series, dict):
             return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart result has no daily series.', attempts=attempts)
         columns = {name: series.get(name) for name in ('open', 'high', 'low', 'close', 'volume')}
@@ -420,8 +427,8 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         offset = result['meta'].get('gmtoffset')
         offset = offset if usable_number(offset) else 0
 
-        # Build a bar for each day in range; Yahoo pads halted days with nulls, which are skipped.
-        bars = []
+        # Build a bar for each day in range; Yahoo pads halted days with nulls, which are skipped, and a repeated day keeps its last bar.
+        bars = {}
         for index, stamp in enumerate(timestamps):
             try:
                 day = datetime.fromtimestamp(stamp + offset, tz=timezone.utc).date().isoformat() if usable_number(stamp) else None
@@ -432,20 +439,22 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
             if not start <= day <= end:
                 continue
             prices = {name: columns[name][index] for name in ('open', 'high', 'low', 'close')}
-            if not all(usable_number(value) for value in prices.values()):
+            if all(value is None for value in prices.values()):
                 continue
+            if not all(usable_number(value) for value in prices.values()):
+                return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail=f'Daily series has an unusable price for {day}.', attempts=attempts)
             adj_close = columns['adj_close'][index] if columns['adj_close'] else None
             volume = columns['volume'][index] if columns['volume'] else None
-            bars.append(PriceBar(
+            bars[day] = PriceBar(
                 symbol_id=symbol_id,
                 date=day,
                 adj_close=adj_close if usable_number(adj_close) else None,
                 volume=int(volume) if usable_number(volume) else None,
                 **prices,
-            ))
+            )
 
         # Return the bars oldest first.
-        return sorted(bars, key=lambda bar: bar.date), None
+        return [bars[day] for day in sorted(bars)], None
 
     # * method: get_history
     def get_history(self, symbol: str, start: str, end: str) -> PriceHistoryAggregate:
@@ -462,9 +471,9 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         :rtype: PriceHistoryAggregate
         '''
 
-        # Request from the start of the first day to the start of the day after the last, in UTC.
-        period1 = int(datetime.combine(date.fromisoformat(start), datetime.min.time(), tzinfo=timezone.utc).timestamp())
-        period2 = int(datetime.combine(date.fromisoformat(end) + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp())
+        # Request the UTC days of the range widened by one day on each side, so exchanges ahead of or behind UTC keep their edge days; bars are trimmed to the range by exchange date.
+        period1 = int(datetime.combine(date.fromisoformat(start), datetime.min.time(), tzinfo=timezone.utc).timestamp()) - DAY_SECONDS
+        period2 = int(datetime.combine(date.fromisoformat(end), datetime.min.time(), tzinfo=timezone.utc).timestamp()) + 2 * DAY_SECONDS
         url = self.history_url.format(symbol=parse.quote(symbol), period1=period1, period2=period2)
 
         # Fetch the daily chart and translate its bars.
