@@ -185,7 +185,7 @@ Toward tiferet-ledger: ledger depends on this package, never the reverse. Ledger
 
 Toward tiferet core: this package adds domain objects, services, events, errors and CLI commands, and relies on core for feature execution, dependency wiring, configuration loading and the error catalog. It depends on `tiferet>=2.2,<2.3` and on no SQL machinery; core's SQLite contract and events (`tiferet/interfaces/sqlite.py:15`, `tiferet/events/sqlite.py:56`, `tiferet/events/sqlite.py:101`) are deliberately unused.
 
-Toward release: tests run in CI on pull requests and pushes to main, and the package publishes to PyPI when a GitHub release is published, using PyPI trusted publishing. Both are copied from core's `.github/workflows/test.yml` and `.github/workflows/python-publish.yml`; the publish job checks the release tag against the package version before building (`.github/workflows/python-publish.yml (15-27)`).
+Toward release: tests run in CI on pull requests and pushes to main, and the package publishes to PyPI when a GitHub release is published, using PyPI trusted publishing. Both are copied from core's `.github/workflows/test.yml` and `.github/workflows/python-publish.yml`; the publish job checks the release tag against the package version before building (`.github/workflows/python-publish.yml (53-60)`).
 
 ## 8. The agnostic core and the variable edge
 
