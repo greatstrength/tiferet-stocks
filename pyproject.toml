@@ -9,7 +9,7 @@ description = "Provider-neutral symbols, quotes, daily history and watchlists fo
 authors = [
     { name = "Andrew Shatz, Great Strength Systems", email = "andrew@greatstrength.me" }
 ]
-license = { text = "BSD-3-Clause" }
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -28,9 +28,16 @@ test = [
 [tool.setuptools.dynamic]
 version = { attr = "tiferet_stocks.__version__" }
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["tiferet_stocks*"]
+[tool.setuptools]
+packages = [
+    "tiferet_stocks",
+    "tiferet_stocks.assets",
+    "tiferet_stocks.domain",
+    "tiferet_stocks.events",
+    "tiferet_stocks.interfaces",
+    "tiferet_stocks.mappers",
+    "tiferet_stocks.repos",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

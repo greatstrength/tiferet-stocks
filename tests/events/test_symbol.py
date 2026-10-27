@@ -8,7 +8,7 @@ from unittest import mock
 
 # ** infra
 import pytest
-from tiferet import TiferetError
+from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
@@ -174,6 +174,34 @@ def test_symbol_events_depend_only_on_lookup() -> None:
     assert GetSymbol.__init__ is SymbolLookupEvent.__init__
     assert ResolveSymbols.__init__ is SymbolLookupEvent.__init__
 
+# ** test: resolve_symbols_single_string
+def test_resolve_symbols_single_string(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that a single id passed as a string is looked up as one id, not per character.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    lookup = DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service}, ids='AAPL')
+
+    assert list(lookup.symbols) == ['AAPL']
+    symbol_lookup_service.lookup.assert_called_once_with(['AAPL'])
+
+# ** test: resolve_symbols_writes_no_file
+def test_resolve_symbols_writes_no_file(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that resolving symbols opens no file.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    with mock.patch('builtins.open') as patched_open:
+        DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service}, ids=['AAPL', 'SPY'])
+
+    patched_open.assert_not_called()
+
 # ** test: list_exchanges
 def test_list_exchanges() -> None:
     '''
@@ -184,3 +212,57 @@ def test_list_exchanges() -> None:
 
     assert exchanges == EXCHANGES
     assert exchanges is not EXCHANGES
+
+# *** testers
+
+# ** tester: test_get_symbol_event
+@use_tester(
+    type='domain_event',
+    target_cls=GetSymbol,
+    dependencies={
+        'symbol_lookup_service': {
+            'module_path': 'tiferet_stocks.interfaces',
+            'class_name': 'SymbolLookupService',
+        },
+    },
+    sample_kwargs={'id': 'AAPL'},
+    required_params=['id'],
+)
+class TestGetSymbolEvent:
+    '''
+    Bound domain event tester for GetSymbol.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require an id.
+        '''
+
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_resolve_symbols_event
+@use_tester(
+    type='domain_event',
+    target_cls=ResolveSymbols,
+    dependencies={
+        'symbol_lookup_service': {
+            'module_path': 'tiferet_stocks.interfaces',
+            'class_name': 'SymbolLookupService',
+        },
+    },
+    sample_kwargs={'ids': ['AAPL']},
+    required_params=['ids'],
+)
+class TestResolveSymbolsEvent:
+    '''
+    Bound domain event tester for ResolveSymbols.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require ids.
+        '''
+
+        test_ctx.assert_missing_required_params()

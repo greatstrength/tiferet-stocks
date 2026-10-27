@@ -5,12 +5,14 @@
 # ** core
 import json
 import socket
+from http import client as http_client
 from typing import Any, Dict, List, Tuple
 from urllib import error as url_error
 from urllib import parse, request
 
 # ** app
-from ..domain import (
+from ..interfaces import SymbolLookupService
+from ..mappers import (
     NYSE,
     NASDAQ,
     NYSE_ARCA,
@@ -30,9 +32,9 @@ from ..domain import (
     QuoteFailure,
     SymbolLookup,
     SymbolWarning,
+    SymbolAggregate,
+    SymbolYahooObject,
 )
-from ..interfaces import SymbolLookupService
-from ..mappers import SymbolAggregate, SymbolYahooObject
 
 # *** constants
 
@@ -142,6 +144,9 @@ class YahooChartPriceRepository(SymbolLookupService):
                     reason, detail = TIMEOUT, f'No response within {self.timeout} seconds'
                 else:
                     reason, detail = HTTP_ERROR, str(error.reason)
+                continue
+            except (http_client.HTTPException, OSError) as error:
+                reason, detail = HTTP_ERROR, str(error) or type(error).__name__
                 continue
 
             # Parse the chart result; a malformed body is final.

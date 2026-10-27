@@ -7,6 +7,7 @@ import io
 import json
 import os
 import socket
+from http import client as http_client
 from typing import Any, List
 from unittest import mock
 from urllib import error as url_error
@@ -15,7 +16,7 @@ from urllib import error as url_error
 import pytest
 
 # ** app
-from tiferet_stocks.repos import (
+from tiferet_stocks.repos.yahoo import (
     YAHOO_ASSET_TYPE_MAP,
     YAHOO_EXCHANGE_MAP,
     YahooChartPriceRepository,
@@ -372,3 +373,55 @@ def test_lookup_many(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> Non
     assert list(lookup.symbols) == ['SPY', 'TCEHY']
     assert [failure.symbol_id for failure in lookup.failures] == ['ZZZZQ']
     assert urlopen.call_count == 3
+
+# ** test: lookup_connection_error_then_success
+@pytest.mark.parametrize('error', [
+    http_client.RemoteDisconnected('Remote end closed connection without response'),
+    ConnectionResetError('Connection reset by peer'),
+    http_client.IncompleteRead(b'partial'),
+])
+def test_lookup_connection_error_then_success(repo: YahooChartPriceRepository,
+                                              urlopen: mock.Mock,
+                                              error: Exception) -> None:
+    '''
+    Test that a dropped or truncated response is retried and does not abort the lookup.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param error: The connection-level error raised on the first attempt.
+    :type error: Exception
+    '''
+
+    urlopen.side_effect = [error, make_response(read_payload('aapl'))]
+
+    lookup = repo.lookup(['AAPL'])
+
+    assert lookup.symbols['AAPL'].exchange == 'NASDAQ'
+    assert lookup.failures == []
+    assert urlopen.call_count == 2
+
+# ** test: lookup_connection_error_exhausted
+def test_lookup_connection_error_exhausted(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that repeated connection errors become an http_error failure while the rest of the batch resolves.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.side_effect = [
+        http_client.RemoteDisconnected('closed'),
+        ConnectionResetError('reset'),
+        make_response(read_payload('spy')),
+    ]
+
+    lookup = repo.lookup(['AAPL', 'SPY'])
+
+    assert list(lookup.symbols) == ['SPY']
+    assert lookup.failures[0].symbol_id == 'AAPL'
+    assert lookup.failures[0].reason == 'http_error'
+    assert lookup.failures[0].attempts == 2

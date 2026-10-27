@@ -54,7 +54,9 @@ class SymbolLookupEvent(DomainEvent):
         :rtype: SymbolLookup
         '''
 
-        # Look up the distinct requested ids with the provider.
+        # Look up the distinct requested ids with the provider; a single id string is one id.
+        if isinstance(ids, str):
+            ids = [ids]
         requested = list(dict.fromkeys(ids))
         exchanges = exchanges or {}
         lookup = self.symbol_lookup_service.lookup(requested)

@@ -9,7 +9,7 @@ import os
 import pytest
 
 # ** app
-from tiferet_stocks.repos import YahooChartPriceRepository
+from tiferet_stocks.repos.yahoo import YahooChartPriceRepository
 
 # *** constants
 
@@ -19,7 +19,7 @@ LIVE_FLAG = 'TIFERET_STOCKS_LIVE'
 # *** tests
 
 # ** test: live_lookup
-@pytest.mark.skipif(not os.getenv(LIVE_FLAG), reason=f'set {LIVE_FLAG}=1 to run live provider checks')
+@pytest.mark.skipif(os.getenv(LIVE_FLAG) != '1', reason=f'set {LIVE_FLAG}=1 to run live provider checks')
 def test_live_lookup() -> None:
     '''
     Opt-in live check that the Yahoo chart format still translates.
