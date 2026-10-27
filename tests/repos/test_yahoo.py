@@ -12,6 +12,7 @@ from http import client as http_client
 from typing import Any, List
 from unittest import mock
 from urllib import error as url_error
+from urllib import parse
 
 # ** infra
 import pytest
@@ -75,6 +76,30 @@ def make_http_error(code: int) -> url_error.HTTPError:
 
     # Build and return the error.
     return url_error.HTTPError('https://example.test', code, 'error', {}, io.BytesIO(b''))
+
+# ** function: history_payload
+def history_payload(timestamps: List[Any], closes: List[Any], gmtoffset: Any = -14400) -> bytes:
+    '''
+    Build a synthetic daily chart body with one price for each bar column.
+
+    :param timestamps: The bar timestamps in epoch seconds.
+    :type timestamps: List[Any]
+    :param closes: The price for each bar, used for open, high, low and close.
+    :type closes: List[Any]
+    :param gmtoffset: The exchange offset from UTC in seconds.
+    :type gmtoffset: Any
+    :return: The response body.
+    :rtype: bytes
+    '''
+
+    # Build and return the body.
+    series = {name: list(closes) for name in ('open', 'high', 'low', 'close')}
+    series['volume'] = [1000] * len(closes)
+    return json.dumps({'chart': {'result': [{
+        'meta': {'symbol': 'AAPL', 'gmtoffset': gmtoffset},
+        'timestamp': timestamps,
+        'indicators': {'quote': [series], 'adjclose': [{'adjclose': list(closes)}]},
+    }], 'error': None}}).encode()
 
 # *** fixtures
 
@@ -672,3 +697,213 @@ def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
     quotations = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
 
     assert quotations.quotes['AAPL'].source == 'alt'
+
+# ** test: get_history_recorded_payload
+def test_get_history_recorded_payload(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a recorded history payload yields float and int bars, oldest first, within the inclusive range.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('aapl_history'))
+
+    history = repo.get_history('AAPL', '2026-10-20', '2026-10-22')
+
+    assert history.failure is None
+    assert [bar.date for bar in history.bars] == ['2026-10-20', '2026-10-21', '2026-10-22']
+    bar = history.bars[0]
+    assert bar.symbol_id == 'AAPL'
+    assert all(isinstance(value, float) for value in (bar.open, bar.high, bar.low, bar.close, bar.adj_close))
+    assert isinstance(bar.volume, int) and not isinstance(bar.volume, bool)
+    assert bar.close == 339.5
+    assert bar.volume == 35851400
+
+# ** test: get_history_request_params
+def test_get_history_request_params(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that the history request carries period1, period2 and interval=1d, covering the end day in full.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('aapl_history'))
+
+    repo.get_history('AAPL', '2026-10-19', '2026-10-23')
+
+    url = urlopen.call_args[0][0].full_url
+    query = parse.parse_qs(parse.urlsplit(url).query)
+    assert query['interval'] == ['1d']
+    assert query['period1'] == [str(int(datetime(2026, 10, 19, tzinfo=timezone.utc).timestamp()))]
+    assert query['period2'] == [str(int(datetime(2026, 10, 24, tzinfo=timezone.utc).timestamp()))]
+    assert '/chart/AAPL?' in url
+
+# ** test: get_history_empty_range
+def test_get_history_empty_range(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a recorded range with no trading days yields no bars and no failure.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('aapl_history_empty'))
+
+    history = repo.get_history('AAPL', '2026-10-24', '2026-10-25')
+
+    assert history.bars == []
+    assert history.failure is None
+
+# ** test: get_history_timeout_then_success
+def test_get_history_timeout_then_success(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that one timeout followed by success yields bars (single retry).
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.side_effect = [socket.timeout('timed out'), make_response(read_payload('aapl_history'))]
+
+    history = repo.get_history('AAPL', '2026-10-19', '2026-10-23')
+
+    assert len(history.bars) == 5
+    assert history.failure is None
+    assert urlopen.call_count == 2
+
+# ** test: get_history_failures
+@pytest.mark.parametrize('side_effect, reason, attempts', [
+    ([make_http_error(404)], 'not_found', 1),
+    ([make_http_error(500), make_http_error(502)], 'http_error', 2),
+    ([socket.timeout('timed out'), socket.timeout('timed out')], 'timeout', 2),
+    ([make_response(b'not json')], 'bad_payload', 1),
+])
+def test_get_history_failures(repo: YahooChartPriceRepository,
+                              urlopen: mock.Mock,
+                              side_effect: List[Any],
+                              reason: str,
+                              attempts: int) -> None:
+    '''
+    Test that provider failures come back as the history failure with their reason and attempts.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param side_effect: The urlopen results in order.
+    :type side_effect: List[Any]
+    :param reason: The expected failure reason.
+    :type reason: str
+    :param attempts: The expected number of attempts.
+    :type attempts: int
+    '''
+
+    urlopen.side_effect = side_effect
+
+    history = repo.get_history('AAPL', '2026-10-19', '2026-10-23')
+
+    assert history.bars == []
+    assert (history.failure.reason, history.failure.attempts) == (reason, attempts)
+
+# ** test: get_history_skips_null_bars
+def test_get_history_skips_null_bars(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a day Yahoo pads with null prices is skipped, and out-of-order bars are returned oldest first.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    stamps = [1792503000, 1792416600, 1792589400]
+    urlopen.return_value = make_response(history_payload(stamps, [2.0, 1.0, None]))
+
+    history = repo.get_history('AAPL', '2026-10-19', '2026-10-23')
+
+    assert [(bar.date, bar.close) for bar in history.bars] == [('2026-10-19', 1.0), ('2026-10-20', 2.0)]
+
+# ** test: get_history_exchange_day
+@pytest.mark.parametrize('stamp, gmtoffset, day', [
+    (1792461600, -14400, '2026-10-19'),
+    (1792461600, 32400, '2026-10-20'),
+    (1792461600, None, '2026-10-20'),
+])
+def test_get_history_exchange_day(repo: YahooChartPriceRepository,
+                                  urlopen: mock.Mock,
+                                  stamp: int,
+                                  gmtoffset: Any,
+                                  day: str) -> None:
+    '''
+    Test that each bar is dated in the exchange time zone, falling back to UTC without an offset.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param stamp: The bar timestamp (2026-10-20 02:00 UTC).
+    :type stamp: int
+    :param gmtoffset: The exchange offset from UTC in seconds.
+    :type gmtoffset: Any
+    :param day: The expected bar date.
+    :type day: str
+    '''
+
+    urlopen.return_value = make_response(history_payload([stamp], [1.0], gmtoffset))
+
+    history = repo.get_history('AAPL', '2026-10-19', '2026-10-20')
+
+    assert [bar.date for bar in history.bars] == [day]
+
+# ** test: get_history_malformed_series
+@pytest.mark.parametrize('mutate', [
+    lambda result: result['indicators']['quote'][0].update(close=[1.0]),
+    lambda result: result['indicators']['quote'][0].pop('close'),
+    lambda result: result.update(indicators={'quote': ['bad']}),
+    lambda result: result.update(timestamp=[1e20]),
+])
+def test_get_history_malformed_series(repo: YahooChartPriceRepository, urlopen: mock.Mock, mutate) -> None:
+    '''
+    Test that a series that does not line up with its timestamps is a bad_payload failure.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param mutate: A function that breaks the chart result.
+    :type mutate: Callable
+    '''
+
+    payload = json.loads(history_payload([1792416600, 1792503000], [1.0, 2.0]))
+    mutate(payload['chart']['result'][0])
+    urlopen.return_value = make_response(json.dumps(payload).encode())
+
+    history = repo.get_history('AAPL', '2026-10-19', '2026-10-23')
+
+    assert history.bars == []
+    assert history.failure.reason == 'bad_payload'
+
+# ** test: init_history_url
+def test_init_history_url(urlopen: mock.Mock) -> None:
+    '''
+    Test that history_url is overridable from configuration.
+
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('aapl_history_empty'))
+
+    YahooChartPriceRepository(history_url='https://example.test/{symbol}/{period1}/{period2}').get_history('AAPL', '2026-10-24', '2026-10-25')
+
+    assert urlopen.call_args[0][0].full_url.startswith('https://example.test/AAPL/')

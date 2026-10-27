@@ -3,6 +3,7 @@
 # *** imports
 
 # ** core
+import csv
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -21,6 +22,8 @@ from ..mappers import (
     Quote,
     QuoteFailure,
     Quotations,
+    PriceBar,
+    PriceHistory,
 )
 
 # *** constants
@@ -33,18 +36,22 @@ DEFAULT_SOURCE = 'static'
 # ** repo: static_price_repository
 class StaticPriceRepository(PriceService):
     '''
-    Read-only price provider that serves fixed prices from a dict or a JSON or YAML fixture, for tests.
+    Read-only price provider that serves fixed prices from a dict or a JSON or YAML fixture, and daily bars from a CSV fixture, for tests.
     '''
 
     # * attribute: prices
     prices: Dict[str, Dict[str, Any]]
+
+    # * attribute: history
+    history: Dict[str, List[Dict[str, str]]]
 
     # * init
     def __init__(self,
                  prices: Dict[str, Dict[str, Any]] = None,
                  fixture_path: str = None,
                  encoding: str = 'utf-8',
-                 source: str = DEFAULT_SOURCE) -> None:
+                 source: str = DEFAULT_SOURCE,
+                 history_path: str = None) -> None:
         '''
         Initialize the static price repository.
 
@@ -56,6 +63,8 @@ class StaticPriceRepository(PriceService):
         :type encoding: str
         :param source: The provider id stamped on each quote.
         :type source: str
+        :param history_path: A CSV fixture of daily bars with the header symbol_id,date,open,high,low,close,adj_close,volume, read once.
+        :type history_path: str
         '''
 
         # Store the provider id and start from the given prices.
@@ -67,6 +76,13 @@ class StaticPriceRepository(PriceService):
             with open(fixture_path, 'r', encoding=encoding) as file:
                 data = json.load(file) if fixture_path.endswith('.json') else yaml.safe_load(file)
             self.prices.update((data or {}).get('prices', data or {}))
+
+        # Group the daily bar rows from the history fixture by symbol id, if one is given.
+        self.history = {}
+        if history_path:
+            with open(history_path, 'r', encoding=encoding, newline='') as file:
+                for row in csv.DictReader(file):
+                    self.history.setdefault(row.get('symbol_id'), []).append(row)
 
     # * method: get_quotes
     def get_quotes(self, symbols: List[str]) -> Quotations:
@@ -114,4 +130,50 @@ class StaticPriceRepository(PriceService):
             quotes=quotes,
             failures=failures,
             fetched_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # * method: get_history
+    def get_history(self, symbol: str, start: str, end: str) -> PriceHistory:
+        '''
+        Get the fixed daily bars for one symbol between two ISO dates, inclusive, oldest first.
+
+        :param symbol: The requested symbol id (ticker).
+        :type symbol: str
+        :param start: The first day, as an ISO 8601 date (inclusive).
+        :type start: str
+        :param end: The last day, as an ISO 8601 date (inclusive).
+        :type end: str
+        :return: The bars within the range, or a not_found or bad_payload failure.
+        :rtype: PriceHistory
+        '''
+
+        # An unknown symbol is a not_found failure.
+        rows = self.history.get(symbol)
+        if rows is None:
+            failure = QuoteFailure(symbol_id=symbol, reason=NOT_FOUND, detail='No static history for the symbol.')
+            return PriceHistory(symbol_id=symbol, start=start, end=end, failure=failure)
+
+        # Build a bar for each row in range; a row with an unusable value is a bad_payload failure.
+        bars = []
+        for row in rows:
+            day = row.get('date') or ''
+            if not start <= day <= end:
+                continue
+            try:
+                prices = {name: float(row[name]) for name in ('open', 'high', 'low', 'close')}
+                adj_close = float(row['adj_close']) if row.get('adj_close') else None
+                volume = int(row['volume']) if row.get('volume') else None
+            except (KeyError, TypeError, ValueError):
+                prices = None
+            if prices is None or not all(usable_number(value) for value in prices.values()) or (adj_close is not None and not usable_number(adj_close)):
+                failure = QuoteFailure(symbol_id=symbol, reason=BAD_PAYLOAD, detail=f'Static history row for {day} has an unusable value.')
+                return PriceHistory(symbol_id=symbol, start=start, end=end, failure=failure)
+            bars.append(PriceBar(symbol_id=symbol, date=day, adj_close=adj_close, volume=volume, **prices))
+
+        # Return the bars oldest first.
+        return PriceHistory(
+            symbol_id=symbol,
+            start=start,
+            end=end,
+            bars=sorted(bars, key=lambda bar: bar.date),
         )

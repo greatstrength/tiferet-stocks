@@ -25,6 +25,8 @@ from ..domain import (
     QuoteFailure,
     Quote,
     Quotations,
+    PriceBar,
+    PriceHistory,
     SymbolLookup,
     SymbolWarning,
 )
