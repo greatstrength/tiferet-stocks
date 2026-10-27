@@ -36,7 +36,7 @@ from ..mappers import (
     QuoteFailure,
     Quotations,
     PriceBar,
-    PriceHistory,
+    PriceHistoryAggregate,
     SymbolLookup,
     SymbolWarning,
     SymbolAggregate,
@@ -448,7 +448,7 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         return sorted(bars, key=lambda bar: bar.date), None
 
     # * method: get_history
-    def get_history(self, symbol: str, start: str, end: str) -> PriceHistory:
+    def get_history(self, symbol: str, start: str, end: str) -> PriceHistoryAggregate:
         '''
         Get the daily bars for one symbol between two ISO dates, inclusive, from the Yahoo chart endpoint.
 
@@ -459,7 +459,7 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         :param end: The last day, as an ISO 8601 date (inclusive).
         :type end: str
         :return: The bars within the range, or the failure.
-        :rtype: PriceHistory
+        :rtype: PriceHistoryAggregate
         '''
 
         # Request from the start of the first day to the start of the day after the last, in UTC.
@@ -474,7 +474,7 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
             bars, failure = self.translate_history(symbol, result, start, end, attempts)
 
         # Return the history.
-        return PriceHistory(
+        return PriceHistoryAggregate(
             symbol_id=symbol,
             start=start,
             end=end,

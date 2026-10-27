@@ -23,7 +23,7 @@ from ..mappers import (
     QuoteFailure,
     Quotations,
     PriceBar,
-    PriceHistory,
+    PriceHistoryAggregate,
 )
 
 # *** constants
@@ -133,7 +133,7 @@ class StaticPriceRepository(PriceService):
         )
 
     # * method: get_history
-    def get_history(self, symbol: str, start: str, end: str) -> PriceHistory:
+    def get_history(self, symbol: str, start: str, end: str) -> PriceHistoryAggregate:
         '''
         Get the fixed daily bars for one symbol between two ISO dates, inclusive, oldest first.
 
@@ -144,14 +144,14 @@ class StaticPriceRepository(PriceService):
         :param end: The last day, as an ISO 8601 date (inclusive).
         :type end: str
         :return: The bars within the range, or a not_found or bad_payload failure.
-        :rtype: PriceHistory
+        :rtype: PriceHistoryAggregate
         '''
 
         # An unknown symbol is a not_found failure.
         rows = self.history.get(symbol)
         if rows is None:
             failure = QuoteFailure(symbol_id=symbol, reason=NOT_FOUND, detail='No static history for the symbol.')
-            return PriceHistory(symbol_id=symbol, start=start, end=end, failure=failure)
+            return PriceHistoryAggregate(symbol_id=symbol, start=start, end=end, failure=failure)
 
         # Build a bar for each row in range; a row with an unusable value is a bad_payload failure.
         bars = []
@@ -167,11 +167,11 @@ class StaticPriceRepository(PriceService):
                 prices = None
             if prices is None or not all(usable_number(value) for value in prices.values()) or (adj_close is not None and not usable_number(adj_close)):
                 failure = QuoteFailure(symbol_id=symbol, reason=BAD_PAYLOAD, detail=f'Static history row for {day} has an unusable value.')
-                return PriceHistory(symbol_id=symbol, start=start, end=end, failure=failure)
+                return PriceHistoryAggregate(symbol_id=symbol, start=start, end=end, failure=failure)
             bars.append(PriceBar(symbol_id=symbol, date=day, adj_close=adj_close, volume=volume, **prices))
 
         # Return the bars oldest first.
-        return PriceHistory(
+        return PriceHistoryAggregate(
             symbol_id=symbol,
             start=start,
             end=end,
