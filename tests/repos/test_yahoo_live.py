@@ -30,3 +30,16 @@ def test_live_lookup() -> None:
     assert lookup.symbols['AAPL'].exchange == 'NASDAQ'
     assert lookup.symbols['SPY'].exchange == 'NYSE_ARCA'
     assert lookup.symbols['SPY'].asset_type == 'etf'
+
+# ** test: live_quotes
+@pytest.mark.skipif(os.getenv(LIVE_FLAG) != '1', reason=f'set {LIVE_FLAG}=1 to run live provider checks')
+def test_live_quotes() -> None:
+    '''
+    Opt-in live check that the Yahoo chart format still yields float-priced quotes.
+    '''
+
+    quote_set = YahooChartPriceRepository().get_quotes(['AAPL', 'SPY'])
+
+    assert isinstance(quote_set.quotes['AAPL'].price, float)
+    assert quote_set.quotes['SPY'].source == 'yahoo_chart'
+    assert quote_set.failures == []

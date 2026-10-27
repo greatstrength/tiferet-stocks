@@ -10,7 +10,9 @@ from .quote import (
     BAD_PAYLOAD,
     SYMBOL_MISMATCH,
     FAILURE_REASONS,
+    derive_change_pct,
     QuoteFailure,
+    Quote,
 )
 from .symbol import (
     NYSE,
@@ -32,3 +34,4 @@ from .symbol import (
     SymbolWarning,
     SymbolLookup,
 )
+from .price import QuoteSet

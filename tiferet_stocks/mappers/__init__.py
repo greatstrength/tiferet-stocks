@@ -20,7 +20,10 @@ from ..domain import (
     BAD_PAYLOAD,
     UNMAPPED_EXCHANGE,
     UNMAPPED_ASSET_TYPE,
+    derive_change_pct,
     QuoteFailure,
+    Quote,
+    QuoteSet,
     SymbolLookup,
     SymbolWarning,
 )

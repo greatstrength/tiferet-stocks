@@ -4,6 +4,7 @@
 
 # ** core
 import json
+from datetime import datetime, timezone
 import socket
 from http import client as http_client
 from typing import Any, Dict, List, Tuple
@@ -11,7 +12,8 @@ from urllib import error as url_error
 from urllib import parse, request
 
 # ** app
-from ..interfaces import SymbolLookupService
+from ..assets import YAHOO_CHART_PROVIDER_ID
+from ..interfaces import PriceService, SymbolLookupService
 from ..mappers import (
     NYSE,
     NASDAQ,
@@ -29,7 +31,10 @@ from ..mappers import (
     BAD_PAYLOAD,
     UNMAPPED_EXCHANGE,
     UNMAPPED_ASSET_TYPE,
+    derive_change_pct,
+    Quote,
     QuoteFailure,
+    QuoteSet,
     SymbolLookup,
     SymbolWarning,
     SymbolAggregate,
@@ -72,7 +77,7 @@ USER_AGENT = 'Mozilla/5.0 (compatible; tiferet-stocks)'
 # *** repos
 
 # ** repo: yahoo_chart_price_repository
-class YahooChartPriceRepository(SymbolLookupService):
+class YahooChartPriceRepository(SymbolLookupService, PriceService):
     '''
     Market data provider backed by the Yahoo chart endpoint.
     '''
@@ -105,17 +110,17 @@ class YahooChartPriceRepository(SymbolLookupService):
         # Store the endpoint and convert the numeric parameters.
         self.quote_url = quote_url
         self.timeout = float(timeout)
-        self.retries = int(retries)
+        self.retries = max(0, int(retries))
 
     # * method: fetch_chart
-    def fetch_chart(self, symbol_id: str) -> Tuple[Dict[str, Any] | None, QuoteFailure | None]:
+    def fetch_chart(self, symbol_id: str) -> Tuple[Dict[str, Any] | None, QuoteFailure | None, int]:
         '''
         Fetch the chart result for one symbol, retrying transient failures.
 
         :param symbol_id: The requested symbol id (ticker).
         :type symbol_id: str
-        :return: The chart result and no failure, or no result and the failure.
-        :rtype: Tuple[Dict[str, Any] | None, QuoteFailure | None]
+        :return: The chart result or the failure, with the number of attempts made.
+        :rtype: Tuple[Dict[str, Any] | None, QuoteFailure | None, int]
         '''
 
         # Build the request for the symbol.
@@ -133,7 +138,7 @@ class YahooChartPriceRepository(SymbolLookupService):
                     body = response.read()
             except url_error.HTTPError as error:
                 if error.code == 404:
-                    return None, QuoteFailure(symbol_id=symbol_id, reason=NOT_FOUND, detail='HTTP 404', attempts=attempts)
+                    return None, QuoteFailure(symbol_id=symbol_id, reason=NOT_FOUND, detail='HTTP 404', attempts=attempts), attempts
                 reason, detail = HTTP_ERROR, f'HTTP {error.code}'
                 continue
             except (socket.timeout, TimeoutError):
@@ -150,10 +155,11 @@ class YahooChartPriceRepository(SymbolLookupService):
                 continue
 
             # Parse the chart result; a malformed body is final.
-            return self.parse_chart(symbol_id, body, attempts)
+            result, failure = self.parse_chart(symbol_id, body, attempts)
+            return result, failure, attempts
 
         # Every attempt failed; return the last failure.
-        return None, QuoteFailure(symbol_id=symbol_id, reason=reason, detail=detail, attempts=attempts)
+        return None, QuoteFailure(symbol_id=symbol_id, reason=reason, detail=detail, attempts=attempts), attempts
 
     # * method: parse_chart
     def parse_chart(self,
@@ -249,7 +255,7 @@ class YahooChartPriceRepository(SymbolLookupService):
         # Fetch and translate each distinct id in request order.
         symbols, warnings, failures = {}, [], []
         for symbol_id in dict.fromkeys(ids):
-            result, failure = self.fetch_chart(symbol_id)
+            result, failure, _ = self.fetch_chart(symbol_id)
             if failure:
                 failures.append(failure)
                 continue
@@ -259,3 +265,89 @@ class YahooChartPriceRepository(SymbolLookupService):
 
         # Return the lookup answer.
         return SymbolLookup(symbols=symbols, warnings=warnings, failures=failures)
+
+    # * method: translate_quote
+    def translate_quote(self,
+                        symbol_id: str,
+                        meta: Dict[str, Any],
+                        attempts: int) -> Tuple[Quote | None, QuoteFailure | None]:
+        '''
+        Translate chart metadata into a quote.
+
+        :param symbol_id: The requested symbol id (ticker).
+        :type symbol_id: str
+        :param meta: The chart result metadata.
+        :type meta: Dict[str, Any]
+        :param attempts: The number of attempts made for the symbol.
+        :type attempts: int
+        :return: The quote and no failure, or no quote and the failure.
+        :rtype: Tuple[Quote | None, QuoteFailure | None]
+        '''
+
+        # A quote needs a numeric price.
+        price = meta.get('regularMarketPrice')
+        if isinstance(price, bool) or not isinstance(price, (int, float)):
+            return None, QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart metadata has no regularMarketPrice.', attempts=attempts)
+
+        # Derive the change from a usable previous close.
+        previous_close = meta.get('chartPreviousClose')
+        if isinstance(previous_close, bool) or not isinstance(previous_close, (int, float)):
+            previous_close = None
+        change_pct = derive_change_pct(price, previous_close)
+
+        # Convert the market time from epoch seconds to ISO 8601 UTC.
+        market_time = meta.get('regularMarketTime')
+        if isinstance(market_time, (int, float)) and not isinstance(market_time, bool):
+            market_time = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat()
+        else:
+            market_time = None
+
+        # Return the quote.
+        return Quote(
+            symbol_id=symbol_id,
+            price=price,
+            previous_close=previous_close,
+            change_pct=change_pct,
+            market_time=market_time,
+            currency=meta.get('currency'),
+            source=YAHOO_CHART_PROVIDER_ID,
+        ), None
+
+    # * method: get_quotes
+    def get_quotes(self, symbols: List[str]) -> QuoteSet:
+        '''
+        Get the latest quote for each requested symbol id from the Yahoo chart endpoint.
+
+        :param symbols: The requested symbol ids (tickers).
+        :type symbols: List[str]
+        :return: The quotes by requested id, with symbols, warnings and failures.
+        :rtype: QuoteSet
+        '''
+
+        # Record when the request started.
+        fetched_at = datetime.now(timezone.utc).isoformat()
+
+        # Fetch each distinct id once and translate its quote and symbol.
+        quotes, symbol_map, warnings, failures = {}, {}, [], []
+        for symbol_id in dict.fromkeys(symbols):
+            result, failure, attempts = self.fetch_chart(symbol_id)
+            if failure:
+                failures.append(failure)
+                continue
+            quote, failure = self.translate_quote(symbol_id, result['meta'], attempts)
+            if failure:
+                failures.append(failure)
+                continue
+            symbol, symbol_warnings = self.translate_symbol(symbol_id, result['meta'])
+            quotes[symbol_id] = quote
+            symbol_map[symbol_id] = symbol
+            warnings.extend(symbol_warnings)
+
+        # Return the quote set.
+        return QuoteSet(
+            quotes=quotes,
+            symbols=symbol_map,
+            warnings=warnings,
+            failures=failures,
+            fetched_at=fetched_at,
+        )

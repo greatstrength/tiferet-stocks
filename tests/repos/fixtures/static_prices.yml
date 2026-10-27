@@ -1,0 +1,9 @@
+prices:
+  AAPL:
+    price: 251.5
+    previous_close: 250.0
+    market_time: '2026-10-26T20:00:00+00:00'
+    currency: USD
+  SPY:
+    price: 680
+    currency: USD

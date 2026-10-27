@@ -10,6 +10,13 @@ services:
     params:
       timeout: '10'
       retries: '1'
+  # Swap providers by changing this entry; YahooChartPriceRepository also backs symbol_lookup_service, so change both together.
+  price_service:
+    module_path: tiferet_stocks.repos.yahoo
+    class_name: YahooChartPriceRepository
+    params:
+      timeout: '10'
+      retries: '1'
   get_symbol_event:
     module_path: tiferet_stocks.events.symbol
     class_name: GetSymbol
@@ -19,8 +26,18 @@ services:
   list_exchanges_event:
     module_path: tiferet_stocks.events.symbol
     class_name: ListExchanges
+  get_quotes_event:
+    module_path: tiferet_stocks.events.quote
+    class_name: GetQuotes
 
 features:
+  quotes:
+    get:
+      name: Get Quotes
+      description: Gets the latest quote for each requested symbol; partial failures are returned as data
+      steps:
+        - service_id: get_quotes_event
+          name: Get the quotes
   symbols:
     get:
       name: Get Symbol
@@ -46,3 +63,10 @@ features:
       steps:
         - service_id: list_exchanges_event
           name: List the exchanges
+
+errors:
+  QUOTES_UNAVAILABLE:
+    name: Quotes Unavailable
+    message:
+      - lang: en_US
+        text: 'No quotes are available for the requested symbols: {symbols}.'

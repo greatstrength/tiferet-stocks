@@ -35,6 +35,28 @@ FAILURE_REASONS = [
     SYMBOL_MISMATCH,
 ]
 
+# *** functions
+
+# ** function: derive_change_pct
+def derive_change_pct(price: float, previous_close: float | None) -> float | None:
+    '''
+    Derive the percent change of a price from the previous close.
+
+    :param price: The latest price.
+    :type price: float
+    :param previous_close: The previous close, when known.
+    :type previous_close: float | None
+    :return: The percent change rounded to 4 decimal places, or None when the previous close is unknown or zero.
+    :rtype: float | None
+    '''
+
+    # No change can be derived without a usable previous close.
+    if not previous_close:
+        return None
+
+    # Return the percent change from the previous close.
+    return round((price - previous_close) / previous_close * 100, 4)
+
 # *** models
 
 # ** model: quote_failure
@@ -54,3 +76,30 @@ class QuoteFailure(DomainObject):
 
     # * attribute: attempts
     attempts: int = Field(default=1, ge=0, description='The number of provider attempts made for the symbol.')
+
+# ** model: quote
+class Quote(DomainObject):
+    '''
+    The latest price for one symbol from one provider.
+    '''
+
+    # * attribute: symbol_id
+    symbol_id: str = Field(..., description='The symbol id (ticker) the quote is for.')
+
+    # * attribute: price
+    price: float = Field(..., description='The latest price; declared float so it is never coerced to a string.')
+
+    # * attribute: previous_close
+    previous_close: float | None = Field(default=None, description='The previous close, when the provider returns it.')
+
+    # * attribute: change_pct
+    change_pct: float | None = Field(default=None, description='The percent change from the previous close, when it is known.')
+
+    # * attribute: market_time
+    market_time: str | None = Field(default=None, description='The market time of the price, as an ISO 8601 UTC timestamp.')
+
+    # * attribute: currency
+    currency: str | None = Field(default=None, description='The currency of the price.')
+
+    # * attribute: source
+    source: str = Field(..., description='The id of the provider that returned the quote.')
