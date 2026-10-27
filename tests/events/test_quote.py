@@ -104,6 +104,20 @@ def test_get_quotes_depends_only_on_price_service(price_service: mock.Mock) -> N
     assert list(inspect.signature(GetQuotes.__init__).parameters) == ['self', 'price_service']
     patched_open.assert_not_called()
 
+# ** test: get_quotes_empty_symbols
+def test_get_quotes_empty_symbols(price_service: mock.Mock) -> None:
+    '''
+    Test that an empty symbol list returns an empty quote set without calling the provider.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    quote_set = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=[])
+
+    assert quote_set.quotes == {} and quote_set.failures == []
+    price_service.get_quotes.assert_not_called()
+
 # *** testers
 
 # ** tester: test_get_quotes_event

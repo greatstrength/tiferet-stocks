@@ -11,6 +11,7 @@ services:
       timeout: '10'
       retries: '1'
   # Swap providers by changing this entry; YahooChartPriceRepository also backs symbol_lookup_service, so change both together.
+  # price_service must stay listed before get_quotes_event, or the feature step fails to load (DI order).
   price_service:
     module_path: tiferet_stocks.repos.yahoo
     class_name: YahooChartPriceRepository

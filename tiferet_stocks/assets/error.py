@@ -21,6 +21,8 @@ QUOTES_UNAVAILABLE_DATA = create_default_error_data(
     [(EN_US, 'No quotes are available for the requested symbols: {symbols}.')],
 )
 
+# *** constants (groups)
+
 # ** constant: default_errors
 DEFAULT_ERRORS = {
     QUOTES_UNAVAILABLE_ID: QUOTES_UNAVAILABLE_DATA,

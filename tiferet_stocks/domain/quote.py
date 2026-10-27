@@ -3,6 +3,7 @@
 # *** imports
 
 # ** core
+import math
 from typing import Literal
 
 # ** infra
@@ -46,12 +47,16 @@ def derive_change_pct(price: float, previous_close: float | None) -> float | Non
     :type price: float
     :param previous_close: The previous close, when known.
     :type previous_close: float | None
-    :return: The percent change rounded to 4 decimal places, or None when the previous close is unknown or zero.
+    :return: The percent change rounded to 4 decimal places, or None when the price or previous close is not a usable number.
     :rtype: float | None
     '''
 
-    # No change can be derived without a usable previous close.
-    if not previous_close:
+    # No change can be derived without a finite price and a finite, positive previous close.
+    if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(price):
+        return None
+    if isinstance(previous_close, bool) or not isinstance(previous_close, (int, float)):
+        return None
+    if not math.isfinite(previous_close) or previous_close <= 0:
         return None
 
     # Return the percent change from the previous close.

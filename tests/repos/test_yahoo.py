@@ -17,6 +17,7 @@ from urllib import error as url_error
 import pytest
 
 # ** app
+from tiferet_stocks import assets as a
 from tiferet_stocks.repos.yahoo import (
     YAHOO_ASSET_TYPE_MAP,
     YAHOO_EXCHANGE_MAP,
@@ -526,7 +527,7 @@ def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: moc
     assert quote_set.failures[0].reason == 'bad_payload'
 
 # ** test: get_quotes_missing_price
-@pytest.mark.parametrize('price', [None, 'n/a', True])
+@pytest.mark.parametrize('price', [None, 'n/a', True, float('nan')])
 def test_get_quotes_missing_price(repo: YahooChartPriceRepository, urlopen: mock.Mock, price: Any) -> None:
     '''
     Test that a payload without a numeric price is a bad_payload failure.
@@ -593,3 +594,37 @@ def test_init_clamps_negative_retries() -> None:
     '''
 
     assert YahooChartPriceRepository(retries='-1').retries == 0
+
+# ** test: get_quotes_unusable_previous_close
+@pytest.mark.parametrize('previous_close', ['250.0', True, float('nan'), -50.0, 0])
+def test_get_quotes_unusable_previous_close(repo: YahooChartPriceRepository,
+                                            urlopen: mock.Mock,
+                                            previous_close: Any) -> None:
+    '''
+    Test that an unusable previous close leaves previous_close and change_pct empty but keeps the quote.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param previous_close: The replacement previous close value.
+    :type previous_close: Any
+    '''
+
+    payload = json.loads(read_payload('aapl'))
+    payload['chart']['result'][0]['meta']['chartPreviousClose'] = previous_close
+    urlopen.return_value = make_response(json.dumps(payload).encode())
+
+    quote = repo.get_quotes(['AAPL']).quotes['AAPL']
+
+    assert quote.previous_close is None
+    assert quote.change_pct is None
+
+# ** test: init_source_default
+def test_init_source_default() -> None:
+    '''
+    Test that the default source matches the catalogued Yahoo chart provider id and can be overridden.
+    '''
+
+    assert YahooChartPriceRepository().source == a.YAHOO_CHART_PROVIDER_ID
+    assert YahooChartPriceRepository(source='yahoo_alt').source == 'yahoo_alt'

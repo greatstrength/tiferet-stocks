@@ -60,6 +60,11 @@ def test_quote_failure_rejects_unknown_reason() -> None:
     (346.28, 343.91, 0.6891),
     (100.0, None, None),
     (100.0, 0, None),
+    (100.0, -50.0, None),
+    (100.0, float('nan'), None),
+    (100.0, float('inf'), None),
+    (100.0, True, None),
+    (float('nan'), 50.0, None),
 ])
 def test_derive_change_pct(price: float, previous_close: float, expected: float) -> None:
     '''

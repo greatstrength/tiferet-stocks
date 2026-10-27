@@ -54,6 +54,10 @@ class GetQuotes(DomainEvent):
         if isinstance(symbols, str):
             symbols = [symbols]
 
+        # Return an empty quote set when no ids are requested.
+        if not symbols:
+            return QuoteSet()
+
         # Get the quotes from the configured provider.
         quote_set = self.price_service.get_quotes(symbols)
 

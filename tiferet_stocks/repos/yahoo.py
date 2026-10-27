@@ -4,6 +4,7 @@
 
 # ** core
 import json
+import math
 from datetime import datetime, timezone
 import socket
 from http import client as http_client
@@ -12,7 +13,6 @@ from urllib import error as url_error
 from urllib import parse, request
 
 # ** app
-from ..assets import YAHOO_CHART_PROVIDER_ID
 from ..interfaces import PriceService, SymbolLookupService
 from ..mappers import (
     NYSE,
@@ -71,6 +71,9 @@ DEFAULT_TIMEOUT = '10'
 # ** constant: default_retries
 DEFAULT_RETRIES = '1'
 
+# ** constant: default_source
+DEFAULT_SOURCE = 'yahoo_chart'
+
 # ** constant: user_agent
 USER_AGENT = 'Mozilla/5.0 (compatible; tiferet-stocks)'
 
@@ -95,7 +98,8 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
     def __init__(self,
                  quote_url: str = DEFAULT_QUOTE_URL,
                  timeout: str = DEFAULT_TIMEOUT,
-                 retries: str = DEFAULT_RETRIES) -> None:
+                 retries: str = DEFAULT_RETRIES,
+                 source: str = DEFAULT_SOURCE) -> None:
         '''
         Initialize the Yahoo chart repository.
 
@@ -105,12 +109,15 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         :type timeout: str
         :param retries: The number of retries per symbol after a failed attempt; configuration may pass a string.
         :type retries: str
+        :param source: The provider id stamped on each quote.
+        :type source: str
         '''
 
         # Store the endpoint and convert the numeric parameters.
         self.quote_url = quote_url
         self.timeout = float(timeout)
         self.retries = max(0, int(retries))
+        self.source = source
 
     # * method: fetch_chart
     def fetch_chart(self, symbol_id: str) -> Tuple[Dict[str, Any] | None, QuoteFailure | None, int]:
@@ -286,18 +293,20 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
 
         # A quote needs a numeric price.
         price = meta.get('regularMarketPrice')
-        if isinstance(price, bool) or not isinstance(price, (int, float)):
-            return None, QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart metadata has no regularMarketPrice.', attempts=attempts)
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(price):
+            return None, QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart metadata has no usable regularMarketPrice.', attempts=attempts)
 
         # Derive the change from a usable previous close.
         previous_close = meta.get('chartPreviousClose')
         if isinstance(previous_close, bool) or not isinstance(previous_close, (int, float)):
             previous_close = None
+        elif not math.isfinite(previous_close) or previous_close <= 0:
+            previous_close = None
         change_pct = derive_change_pct(price, previous_close)
 
         # Convert the market time from epoch seconds to ISO 8601 UTC.
         market_time = meta.get('regularMarketTime')
-        if isinstance(market_time, (int, float)) and not isinstance(market_time, bool):
+        if isinstance(market_time, (int, float)) and not isinstance(market_time, bool) and math.isfinite(market_time):
             market_time = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat()
         else:
             market_time = None
@@ -310,7 +319,7 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
             change_pct=change_pct,
             market_time=market_time,
             currency=meta.get('currency'),
-            source=YAHOO_CHART_PROVIDER_ID,
+            source=self.source,
         ), None
 
     # * method: get_quotes
