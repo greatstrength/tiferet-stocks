@@ -3,6 +3,7 @@
 # *** exports
 
 # ** app
+from .history import GetHistory
 from .quote import GetQuotes
 from .symbol import (
     SymbolLookupEvent,

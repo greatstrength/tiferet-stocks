@@ -26,6 +26,9 @@ LIST_EXCHANGES_EVENT_ID = 'list_exchanges_event'
 # ** constant: get_quotes_event_id
 GET_QUOTES_EVENT_ID = 'get_quotes_event'
 
+# ** constant: get_history_event_id
+GET_HISTORY_EVENT_ID = 'get_history_event'
+
 # *** constants (ids_providers)
 
 # ** constant: yahoo_chart_provider_id
@@ -47,3 +50,6 @@ EXCHANGES_LIST_FEATURE_ID = 'exchanges.list'
 
 # ** constant: quotes_get_feature_id
 QUOTES_GET_FEATURE_ID = 'quotes.get'
+
+# ** constant: quotes_history_feature_id
+QUOTES_HISTORY_FEATURE_ID = 'quotes.history'

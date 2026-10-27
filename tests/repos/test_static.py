@@ -12,12 +12,16 @@ import pytest
 
 # ** app
 from tiferet_stocks import assets as a
+from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.repos.static import StaticPriceRepository
 
 # *** constants
 
 # ** constant: fixture_path
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), 'fixtures', 'static_prices.yml')
+
+# ** constant: history_path
+HISTORY_PATH = os.path.join(os.path.dirname(__file__), 'fixtures', 'static_history.csv')
 
 # *** tests
 
@@ -134,3 +138,74 @@ def test_get_quotes_source_override() -> None:
     quotations = StaticPriceRepository(prices={'X': {'price': 10}}, source='alt').get_quotes(['X'])
 
     assert quotations.quotes['X'].source == 'alt'
+
+# ** test: get_history_from_csv
+def test_get_history_from_csv() -> None:
+    '''
+    Test that a CSV fixture serves float and int bars within the inclusive range, oldest first, with no network.
+    '''
+
+    repo = StaticPriceRepository(history_path=HISTORY_PATH)
+
+    with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network used')), mock.patch('builtins.open') as patched_open:
+        history = repo.get_history('AAPL', '2026-10-19', '2026-10-21')
+
+    patched_open.assert_not_called()
+    assert isinstance(history, PriceHistoryAggregate)
+    assert history.failure is None
+    assert [bar.date for bar in history.bars] == ['2026-10-19', '2026-10-20', '2026-10-21']
+    assert isinstance(history.bars[0].close, float)
+    assert isinstance(history.bars[0].volume, int)
+    assert (history.bars[1].adj_close, history.bars[1].volume) == (None, None)
+
+# ** test: get_history_empty_range
+def test_get_history_empty_range() -> None:
+    '''
+    Test that a range with no rows yields no bars and no failure.
+    '''
+
+    history = StaticPriceRepository(history_path=HISTORY_PATH).get_history('AAPL', '2026-10-24', '2026-10-25')
+
+    assert history.bars == []
+    assert history.failure is None
+
+# ** test: get_history_unknown_symbol
+def test_get_history_unknown_symbol() -> None:
+    '''
+    Test that a symbol with no rows is a not_found failure.
+    '''
+
+    history = StaticPriceRepository(history_path=HISTORY_PATH).get_history('NOPE', '2026-10-19', '2026-10-21')
+
+    assert isinstance(history, PriceHistoryAggregate)
+    assert history.failure.reason == 'not_found'
+
+# ** test: get_history_bad_rows
+@pytest.mark.parametrize('row', [
+    'X,2026-10-19,1,1,1,n/a,,',
+    'X,2026-10-19,1,1,1,nan,,',
+    'X,2026-10-19,1,1,1,1,inf,',
+    'X,2026-10-19,1,1,1,1,,1.5',
+    'X,2026-10-19,1,1,1',
+    'X,2026-10-19,1,1,1,1,,\nX,2026-10-19,2,2,2,2,,',
+    'X,2026-1-5,1,1,1,1,,\nX,2026-10-19,1,1,1,1,,',
+    'X,20261019,1,1,1,1,,',
+])
+def test_get_history_bad_rows(tmp_path, row: str) -> None:
+    '''
+    Test that a row with an unusable value is a bad_payload failure, not an exception.
+
+    :param tmp_path: A temporary directory.
+    :type tmp_path: pathlib.Path
+    :param row: The CSV row.
+    :type row: str
+    '''
+
+    path = tmp_path / 'history.csv'
+    path.write_text('symbol_id,date,open,high,low,close,adj_close,volume\n' + row + '\n')
+
+    history = StaticPriceRepository(history_path=str(path)).get_history('X', '2026-10-19', '2026-10-19')
+
+    assert isinstance(history, PriceHistoryAggregate)
+    assert history.bars == []
+    assert history.failure.reason == 'bad_payload'
