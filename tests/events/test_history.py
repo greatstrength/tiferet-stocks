@@ -13,6 +13,7 @@ from tiferet.events import DomainEvent
 
 # ** app
 from tiferet_stocks.domain import PriceBar, PriceHistory, QuoteFailure
+from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.events import GetHistory
 from tiferet_stocks.interfaces import PriceService
 
@@ -57,7 +58,7 @@ def test_get_history_bars(price_service: mock.Mock) -> None:
     '''
 
     bar = PriceBar(symbol_id='AAPL', date='2026-10-19', open=1, high=2, low=1, close=2, volume=10)
-    price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-19', end='2026-10-23', bars=[bar])
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='AAPL', start='2026-10-19', end='2026-10-23', bars=[bar])
 
     bars = run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-23')
 
@@ -73,7 +74,7 @@ def test_get_history_empty_range(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-24', end='2026-10-25')
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='AAPL', start='2026-10-24', end='2026-10-25')
 
     assert run(price_service, symbol='AAPL', start='2026-10-24', end='2026-10-25') == []
 
@@ -86,7 +87,7 @@ def test_get_history_single_day(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-19', end='2026-10-19')
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='AAPL', start='2026-10-19', end='2026-10-19')
 
     assert run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-19') == []
 
@@ -103,7 +104,7 @@ def test_get_history_unavailable(price_service: mock.Mock, reason: str) -> None:
     '''
 
     failure = QuoteFailure(symbol_id='NOPE', reason=reason, attempts=2)
-    price_service.get_history.return_value = PriceHistory(symbol_id='NOPE', start='2026-10-19', end='2026-10-23', failure=failure)
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='NOPE', start='2026-10-19', end='2026-10-23', failure=failure)
 
     with pytest.raises(TiferetError) as exc_info:
         run(price_service, symbol='NOPE', start='2026-10-19', end='2026-10-23')
@@ -148,7 +149,7 @@ def test_get_history_depends_only_on_price_service(price_service: mock.Mock) -> 
     :type price_service: mock.Mock
     '''
 
-    price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-19', end='2026-10-23')
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='AAPL', start='2026-10-19', end='2026-10-23')
 
     with mock.patch('builtins.open') as patched_open:
         run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-23')

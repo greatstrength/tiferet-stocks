@@ -30,6 +30,9 @@ from ..domain import (
     SymbolLookup,
     SymbolWarning,
 )
+from .history import (
+    PriceHistoryAggregate,
+)
 from .symbol import (
     SymbolAggregate,
     SymbolYahooObject,
