@@ -4,12 +4,12 @@
 
 # ** core
 import json
-import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 # ** infra
-import yaml  # declared in pyproject; also a tiferet dependency
+# PyYAML is provided by tiferet (pyyaml>=6.0.1).
+import yaml
 
 # ** app
 from ..interfaces import PriceService
@@ -17,6 +17,7 @@ from ..mappers import (
     NOT_FOUND,
     BAD_PAYLOAD,
     derive_change_pct,
+    usable_number,
     Quote,
     QuoteFailure,
     QuoteSet,
@@ -26,22 +27,6 @@ from ..mappers import (
 
 # ** constant: default_source
 DEFAULT_SOURCE = 'static'
-
-# *** functions
-
-# ** function: usable_number
-def usable_number(value: Any) -> bool:
-    '''
-    Check that a value is a finite int or float and not a bool.
-
-    :param value: The value to check.
-    :type value: Any
-    :return: True when the value is a usable number.
-    :rtype: bool
-    '''
-
-    # Reject bools, non-numbers and NaN or infinite values.
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 # *** repos
 

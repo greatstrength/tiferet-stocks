@@ -4,7 +4,7 @@
 
 # ** core
 import math
-from typing import Literal
+from typing import Any, Literal
 
 # ** infra
 from pydantic import Field
@@ -38,6 +38,20 @@ FAILURE_REASONS = [
 
 # *** functions
 
+# ** function: usable_number
+def usable_number(value: Any) -> bool:
+    '''
+    Check that a value is a finite int or float and not a bool.
+
+    :param value: The value to check.
+    :type value: Any
+    :return: True when the value is a usable number.
+    :rtype: bool
+    '''
+
+    # Reject bools, non-numbers and NaN or infinite values.
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
 # ** function: derive_change_pct
 def derive_change_pct(price: float, previous_close: float | None) -> float | None:
     '''
@@ -52,11 +66,7 @@ def derive_change_pct(price: float, previous_close: float | None) -> float | Non
     '''
 
     # No change can be derived without a finite price and a finite, positive previous close.
-    if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(price):
-        return None
-    if isinstance(previous_close, bool) or not isinstance(previous_close, (int, float)):
-        return None
-    if not math.isfinite(previous_close) or previous_close <= 0:
+    if not usable_number(price) or not usable_number(previous_close) or previous_close <= 0:
         return None
 
     # Return the percent change from the previous close.

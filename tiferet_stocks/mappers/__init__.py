@@ -21,6 +21,7 @@ from ..domain import (
     UNMAPPED_EXCHANGE,
     UNMAPPED_ASSET_TYPE,
     derive_change_pct,
+    usable_number,
     QuoteFailure,
     Quote,
     QuoteSet,

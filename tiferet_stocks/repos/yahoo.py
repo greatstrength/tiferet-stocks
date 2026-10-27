@@ -4,7 +4,6 @@
 
 # ** core
 import json
-import math
 from datetime import datetime, timezone
 import socket
 from http import client as http_client
@@ -32,6 +31,7 @@ from ..mappers import (
     UNMAPPED_EXCHANGE,
     UNMAPPED_ASSET_TYPE,
     derive_change_pct,
+    usable_number,
     Quote,
     QuoteFailure,
     QuoteSet,
@@ -293,22 +293,20 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
 
         # A quote needs a numeric price.
         price = meta.get('regularMarketPrice')
-        if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(price):
+        if not usable_number(price):
             return None, QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart metadata has no usable regularMarketPrice.', attempts=attempts)
 
         # Derive the change from a usable previous close.
         previous_close = meta.get('chartPreviousClose')
-        if isinstance(previous_close, bool) or not isinstance(previous_close, (int, float)):
-            previous_close = None
-        elif not math.isfinite(previous_close) or previous_close <= 0:
+        if not usable_number(previous_close) or previous_close <= 0:
             previous_close = None
         change_pct = derive_change_pct(price, previous_close)
 
-        # Convert the market time from epoch seconds to ISO 8601 UTC.
+        # Convert the market time from epoch seconds to ISO 8601 UTC; an unusable or out-of-range value leaves it empty.
         market_time = meta.get('regularMarketTime')
-        if isinstance(market_time, (int, float)) and not isinstance(market_time, bool) and math.isfinite(market_time):
-            market_time = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat()
-        else:
+        try:
+            market_time = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if usable_number(market_time) else None
+        except (OverflowError, OSError, ValueError):
             market_time = None
 
         # Return the quote.

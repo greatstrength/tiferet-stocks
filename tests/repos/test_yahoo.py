@@ -628,3 +628,47 @@ def test_init_source_default() -> None:
 
     assert YahooChartPriceRepository().source == a.YAHOO_CHART_PROVIDER_ID
     assert YahooChartPriceRepository(source='yahoo_alt').source == 'yahoo_alt'
+
+# ** test: get_quotes_unusable_market_time
+@pytest.mark.parametrize('market_time', [1e20, -1e20, 1e18, float('nan'), True, 'soon'])
+def test_get_quotes_unusable_market_time(repo: YahooChartPriceRepository,
+                                         urlopen: mock.Mock,
+                                         market_time: Any) -> None:
+    '''
+    Test that an unusable or out-of-range market time keeps the quote with market_time empty and keeps the rest of the batch.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param market_time: The replacement market time value.
+    :type market_time: Any
+    '''
+
+    payload = json.loads(read_payload('aapl'))
+    payload['chart']['result'][0]['meta']['regularMarketTime'] = market_time
+    urlopen.side_effect = [
+        make_response(json.dumps(payload).encode()),
+        make_response(read_payload('spy')),
+    ]
+
+    quote_set = repo.get_quotes(['AAPL', 'SPY'])
+
+    assert quote_set.quotes['AAPL'].market_time is None
+    assert quote_set.quotes['SPY'].market_time is not None
+    assert quote_set.failures == []
+
+# ** test: get_quotes_source_override
+def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
+    '''
+    Test that a configured source reaches each quote.
+
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('aapl'))
+
+    quote_set = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
+
+    assert quote_set.quotes['AAPL'].source == 'alt'

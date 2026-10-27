@@ -12,6 +12,7 @@ from tiferet_stocks.domain import (
     FAILURE_REASONS,
     SYMBOL_MISMATCH,
     derive_change_pct,
+    usable_number,
     Quote,
     QuoteFailure,
     QuoteSet,
@@ -64,6 +65,7 @@ def test_quote_failure_rejects_unknown_reason() -> None:
     (100.0, float('nan'), None),
     (100.0, float('inf'), None),
     (100.0, True, None),
+    (True, 50.0, None),
     (float('nan'), 50.0, None),
 ])
 def test_derive_change_pct(price: float, previous_close: float, expected: float) -> None:
@@ -79,6 +81,29 @@ def test_derive_change_pct(price: float, previous_close: float, expected: float)
     '''
 
     assert derive_change_pct(price, previous_close) == expected
+
+# ** test: usable_number
+@pytest.mark.parametrize('value, expected', [
+    (1, True),
+    (1.5, True),
+    (0, True),
+    (True, False),
+    ('1.5', False),
+    (None, False),
+    (float('nan'), False),
+    (float('inf'), False),
+])
+def test_usable_number(value, expected: bool) -> None:
+    '''
+    Test that only finite ints and floats, never bools, are usable numbers.
+
+    :param value: The value to check.
+    :type value: Any
+    :param expected: Whether the value is usable.
+    :type expected: bool
+    '''
+
+    assert usable_number(value) is expected
 
 # ** test: quote_numeric_fields
 def test_quote_numeric_fields() -> None:

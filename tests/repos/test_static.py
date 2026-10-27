@@ -124,3 +124,13 @@ def test_init_source_default() -> None:
     '''
 
     assert StaticPriceRepository().source == a.STATIC_PROVIDER_ID
+
+# ** test: get_quotes_source_override
+def test_get_quotes_source_override() -> None:
+    '''
+    Test that a configured source reaches each quote.
+    '''
+
+    quote_set = StaticPriceRepository(prices={'X': {'price': 10}}, source='alt').get_quotes(['X'])
+
+    assert quote_set.quotes['X'].source == 'alt'
