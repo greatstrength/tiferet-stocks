@@ -1,0 +1,57 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "FRSXX",
+          "exchangeName": "NAS",
+          "fullExchangeName": "Nasdaq",
+          "instrumentType": "MONEYMARKET",
+          "regularMarketTime": 1793102865,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 1.0,
+          "longName": "Fidelity Colchester Street Trust - Treasury Only Portfolio",
+          "shortName": "FIMM Treasury Only Portfolio: I",
+          "priceHint": 4,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793102865
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "low": [
+                0.0
+              ],
+              "open": [
+                0.0
+              ],
+              "high": [
+                0.0
+              ],
+              "volume": [
+                0
+              ],
+              "close": [
+                1.0
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                1.0
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}

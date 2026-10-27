@@ -1,0 +1,59 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "IMO",
+          "exchangeName": "ASE",
+          "fullExchangeName": "NYSE American",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1793116881,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 131.41,
+          "regularMarketChangePercent": -2.29,
+          "chartPreviousClose": 134.49,
+          "longName": "Imperial Oil Limited",
+          "shortName": "Imperial Oil Limited",
+          "priceHint": 2,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793116881
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "low": [
+                131.1699981689453
+              ],
+              "close": [
+                131.41000366210938
+              ],
+              "volume": [
+                145301
+              ],
+              "open": [
+                133.61000061035156
+              ],
+              "high": [
+                134.52000427246094
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                131.41000366210938
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}

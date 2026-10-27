@@ -1,0 +1,59 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "ARKK",
+          "exchangeName": "BTS",
+          "fullExchangeName": "Cboe US",
+          "instrumentType": "ETF",
+          "regularMarketTime": 1793117163,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 84.505,
+          "regularMarketChangePercent": 3.256,
+          "chartPreviousClose": 81.84,
+          "longName": "ARK Innovation ETF",
+          "shortName": "ARK Innovation ETF",
+          "priceHint": 2,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793117163
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "high": [
+                84.53500366210938
+              ],
+              "volume": [
+                1966153
+              ],
+              "open": [
+                82.55000305175781
+              ],
+              "low": [
+                82.13500213623047
+              ],
+              "close": [
+                84.50499725341797
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                84.50499725341797
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}

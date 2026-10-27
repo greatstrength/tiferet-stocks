@@ -1,0 +1,59 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "QQQ",
+          "exchangeName": "NGM",
+          "fullExchangeName": "NasdaqGM",
+          "instrumentType": "ETF",
+          "regularMarketTime": 1793117164,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 722.3,
+          "regularMarketChangePercent": 1.418,
+          "chartPreviousClose": 712.2,
+          "longName": "Invesco QQQ Trust",
+          "shortName": "Invesco QQQ Trust, Series 1",
+          "priceHint": 2,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793117164
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "low": [
+                713.5900268554688
+              ],
+              "open": [
+                715.0960083007812
+              ],
+              "close": [
+                722.2999877929688
+              ],
+              "volume": [
+                13332188
+              ],
+              "high": [
+                722.719970703125
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                722.2999877929688
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "PLUG",
+          "exchangeName": "NCM",
+          "fullExchangeName": "NasdaqCM",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1793117161,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 1.42,
+          "regularMarketChangePercent": 3.65,
+          "chartPreviousClose": 1.37,
+          "longName": "Plug Power Inc.",
+          "shortName": "Plug Power, Inc.",
+          "priceHint": 4,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793117161
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "open": [
+                1.399999976158142
+              ],
+              "close": [
+                1.4199999570846558
+              ],
+              "low": [
+                1.3899999856948853
+              ],
+              "volume": [
+                21360709
+              ],
+              "high": [
+                1.4500000476837158
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                1.4199999570846558
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}
