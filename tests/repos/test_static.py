@@ -27,14 +27,14 @@ def test_get_quotes_from_yaml_fixture() -> None:
     Test that a YAML fixture serves float-priced quotes and a not_found failure for an unknown id.
     '''
 
-    quote_set = StaticPriceRepository(fixture_path=FIXTURE_PATH).get_quotes(['AAPL', 'SPY', 'NOPE'])
+    quotations = StaticPriceRepository(fixture_path=FIXTURE_PATH).get_quotes(['AAPL', 'SPY', 'NOPE'])
 
-    assert quote_set.quotes['AAPL'].price == 251.5
-    assert quote_set.quotes['AAPL'].change_pct == 0.6
-    assert isinstance(quote_set.quotes['SPY'].price, float)
-    assert quote_set.quotes['SPY'].change_pct is None
-    assert quote_set.quotes['SPY'].source == 'static'
-    assert [(f.symbol_id, f.reason) for f in quote_set.failures] == [('NOPE', 'not_found')]
+    assert quotations.quotes['AAPL'].price == 251.5
+    assert quotations.quotes['AAPL'].change_pct == 0.6
+    assert isinstance(quotations.quotes['SPY'].price, float)
+    assert quotations.quotes['SPY'].change_pct is None
+    assert quotations.quotes['SPY'].source == 'static'
+    assert [(f.symbol_id, f.reason) for f in quotations.failures] == [('NOPE', 'not_found')]
 
 # ** test: get_quotes_from_json_fixture
 def test_get_quotes_from_json_fixture(tmp_path) -> None:
@@ -48,10 +48,10 @@ def test_get_quotes_from_json_fixture(tmp_path) -> None:
     path = tmp_path / 'prices.json'
     path.write_text(json.dumps({'prices': {'IBM': {'price': 300.25}}}))
 
-    quote_set = StaticPriceRepository(fixture_path=str(path)).get_quotes(['IBM'])
+    quotations = StaticPriceRepository(fixture_path=str(path)).get_quotes(['IBM'])
 
-    assert quote_set.quotes['IBM'].price == 300.25
-    assert quote_set.quotes['IBM'].currency == 'USD'
+    assert quotations.quotes['IBM'].price == 300.25
+    assert quotations.quotes['IBM'].currency == 'USD'
 
 # ** test: get_quotes_from_dict
 def test_get_quotes_from_dict() -> None:
@@ -59,10 +59,10 @@ def test_get_quotes_from_dict() -> None:
     Test that prices can be passed directly, with no file.
     '''
 
-    quote_set = StaticPriceRepository(prices={'QQQ': {'price': 600, 'previous_close': 600}}).get_quotes(['QQQ'])
+    quotations = StaticPriceRepository(prices={'QQQ': {'price': 600, 'previous_close': 600}}).get_quotes(['QQQ'])
 
-    assert quote_set.quotes['QQQ'].change_pct == 0.0
-    assert quote_set.symbols == {}
+    assert quotations.quotes['QQQ'].change_pct == 0.0
+    assert quotations.symbols == {}
 
 # ** test: get_quotes_duplicate_unknown_id
 def test_get_quotes_duplicate_unknown_id() -> None:
@@ -70,9 +70,9 @@ def test_get_quotes_duplicate_unknown_id() -> None:
     Test that a repeated unknown id gives exactly one failure.
     '''
 
-    quote_set = StaticPriceRepository(prices={}).get_quotes(['NOPE', 'NOPE'])
+    quotations = StaticPriceRepository(prices={}).get_quotes(['NOPE', 'NOPE'])
 
-    assert [(f.symbol_id, f.reason) for f in quote_set.failures] == [('NOPE', 'not_found')]
+    assert [(f.symbol_id, f.reason) for f in quotations.failures] == [('NOPE', 'not_found')]
 
 # ** test: get_quotes_reads_no_file
 def test_get_quotes_reads_no_file() -> None:
@@ -97,10 +97,10 @@ def test_get_quotes_bad_rows(row) -> None:
     :type row: Any
     '''
 
-    quote_set = StaticPriceRepository(prices={'BAD': row}).get_quotes(['BAD'])
+    quotations = StaticPriceRepository(prices={'BAD': row}).get_quotes(['BAD'])
 
-    assert quote_set.quotes == {}
-    assert [(f.symbol_id, f.reason) for f in quote_set.failures] == [('BAD', 'bad_payload')]
+    assert quotations.quotes == {}
+    assert [(f.symbol_id, f.reason) for f in quotations.failures] == [('BAD', 'bad_payload')]
 
 # ** test: get_quotes_unusable_previous_close
 @pytest.mark.parametrize('previous_close', ['250.0', True, -50.0, float('inf')])
@@ -131,6 +131,6 @@ def test_get_quotes_source_override() -> None:
     Test that a configured source reaches each quote.
     '''
 
-    quote_set = StaticPriceRepository(prices={'X': {'price': 10}}, source='alt').get_quotes(['X'])
+    quotations = StaticPriceRepository(prices={'X': {'price': 10}}, source='alt').get_quotes(['X'])
 
-    assert quote_set.quotes['X'].source == 'alt'
+    assert quotations.quotes['X'].source == 'alt'

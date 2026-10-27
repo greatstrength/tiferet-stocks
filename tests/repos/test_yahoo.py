@@ -442,8 +442,8 @@ def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: m
     meta = json.loads(read_payload('aapl'))['chart']['result'][0]['meta']
     urlopen.return_value = make_response(read_payload('aapl'))
 
-    quote_set = repo.get_quotes(['AAPL'])
-    quote = quote_set.quotes['AAPL']
+    quotations = repo.get_quotes(['AAPL'])
+    quote = quotations.quotes['AAPL']
 
     assert isinstance(quote.price, float)
     assert quote.price == meta['regularMarketPrice']
@@ -452,9 +452,9 @@ def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: m
     assert quote.market_time == datetime.fromtimestamp(meta['regularMarketTime'], tz=timezone.utc).isoformat()
     assert quote.currency == 'USD'
     assert quote.source == 'yahoo_chart'
-    assert quote_set.symbols['AAPL'].exchange == 'NASDAQ'
-    assert quote_set.failures == []
-    assert quote_set.fetched_at
+    assert quotations.symbols['AAPL'].exchange == 'NASDAQ'
+    assert quotations.failures == []
+    assert quotations.fetched_at
 
 # ** test: get_quotes_carries_symbol_warnings
 def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
@@ -469,11 +469,11 @@ def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, url
 
     urlopen.return_value = make_response(read_payload('tcehy'))
 
-    quote_set = repo.get_quotes(['TCEHY'])
+    quotations = repo.get_quotes(['TCEHY'])
 
-    assert 'TCEHY' in quote_set.quotes
-    assert [(w.reason, w.detail) for w in quote_set.warnings] == [('unmapped_exchange', 'PNK')]
-    assert quote_set.failures == []
+    assert 'TCEHY' in quotations.quotes
+    assert [(w.reason, w.detail) for w in quotations.warnings] == [('unmapped_exchange', 'PNK')]
+    assert quotations.failures == []
 
 # ** test: get_quotes_failures
 @pytest.mark.parametrize('side_effect, reason, attempts', [
@@ -503,11 +503,11 @@ def test_get_quotes_failures(repo: YahooChartPriceRepository,
 
     urlopen.side_effect = side_effect
 
-    quote_set = repo.get_quotes(['AAPL'])
+    quotations = repo.get_quotes(['AAPL'])
 
-    assert quote_set.quotes == {}
-    assert quote_set.failures[0].reason == reason
-    assert quote_set.failures[0].attempts == attempts
+    assert quotations.quotes == {}
+    assert quotations.failures[0].reason == reason
+    assert quotations.failures[0].attempts == attempts
 
 # ** test: get_quotes_malformed_json
 def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
@@ -522,9 +522,9 @@ def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: moc
 
     urlopen.return_value = make_response(b'{not json')
 
-    quote_set = repo.get_quotes(['AAPL'])
+    quotations = repo.get_quotes(['AAPL'])
 
-    assert quote_set.failures[0].reason == 'bad_payload'
+    assert quotations.failures[0].reason == 'bad_payload'
 
 # ** test: get_quotes_missing_price
 @pytest.mark.parametrize('price', [None, 'n/a', True, float('nan')])
@@ -544,10 +544,10 @@ def test_get_quotes_missing_price(repo: YahooChartPriceRepository, urlopen: mock
     payload['chart']['result'][0]['meta']['regularMarketPrice'] = price
     urlopen.return_value = make_response(json.dumps(payload).encode())
 
-    quote_set = repo.get_quotes(['AAPL'])
+    quotations = repo.get_quotes(['AAPL'])
 
-    assert quote_set.quotes == {}
-    assert quote_set.failures[0].reason == 'bad_payload'
+    assert quotations.quotes == {}
+    assert quotations.failures[0].reason == 'bad_payload'
 
 # ** test: get_quotes_timeout_then_success
 def test_get_quotes_timeout_then_success(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
@@ -562,10 +562,10 @@ def test_get_quotes_timeout_then_success(repo: YahooChartPriceRepository, urlope
 
     urlopen.side_effect = [socket.timeout('timed out'), make_response(read_payload('spy'))]
 
-    quote_set = repo.get_quotes(['SPY'])
+    quotations = repo.get_quotes(['SPY'])
 
-    assert quote_set.quotes['SPY'].source == 'yahoo_chart'
-    assert quote_set.failures == []
+    assert quotations.quotes['SPY'].source == 'yahoo_chart'
+    assert quotations.failures == []
     assert urlopen.call_count == 2
 
 # ** test: get_quotes_every_id_once
@@ -581,8 +581,8 @@ def test_get_quotes_every_id_once(repo: YahooChartPriceRepository, urlopen: mock
 
     urlopen.side_effect = [make_response(read_payload('aapl')), make_http_error(404), make_response(read_payload('spy'))]
 
-    quote_set = repo.get_quotes(['AAPL', 'ZZZZQ', 'SPY', 'AAPL'])
-    seen = list(quote_set.quotes) + [failure.symbol_id for failure in quote_set.failures]
+    quotations = repo.get_quotes(['AAPL', 'ZZZZQ', 'SPY', 'AAPL'])
+    seen = list(quotations.quotes) + [failure.symbol_id for failure in quotations.failures]
 
     assert sorted(seen) == ['AAPL', 'SPY', 'ZZZZQ']
     assert urlopen.call_count == 3
@@ -630,7 +630,7 @@ def test_init_source_default() -> None:
     assert YahooChartPriceRepository(source='yahoo_alt').source == 'yahoo_alt'
 
 # ** test: get_quotes_unusable_market_time
-@pytest.mark.parametrize('market_time', [1e20, -1e20, 1e18, float('nan'), True, 'soon'])
+@pytest.mark.parametrize('market_time', [1e20, -1e20, 1e18, 3e11, float('nan'), True, 'soon'])
 def test_get_quotes_unusable_market_time(repo: YahooChartPriceRepository,
                                          urlopen: mock.Mock,
                                          market_time: Any) -> None:
@@ -652,11 +652,11 @@ def test_get_quotes_unusable_market_time(repo: YahooChartPriceRepository,
         make_response(read_payload('spy')),
     ]
 
-    quote_set = repo.get_quotes(['AAPL', 'SPY'])
+    quotations = repo.get_quotes(['AAPL', 'SPY'])
 
-    assert quote_set.quotes['AAPL'].market_time is None
-    assert quote_set.quotes['SPY'].market_time is not None
-    assert quote_set.failures == []
+    assert quotations.quotes['AAPL'].market_time is None
+    assert quotations.quotes['SPY'].market_time is not None
+    assert quotations.failures == []
 
 # ** test: get_quotes_source_override
 def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
@@ -669,6 +669,6 @@ def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
 
     urlopen.return_value = make_response(read_payload('aapl'))
 
-    quote_set = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
+    quotations = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
 
-    assert quote_set.quotes['AAPL'].source == 'alt'
+    assert quotations.quotes['AAPL'].source == 'alt'

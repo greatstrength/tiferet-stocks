@@ -128,8 +128,8 @@ def test_quote_requires_price_and_source() -> None:
     with pytest.raises(ValidationError):
         Quote(symbol_id='SPY', price=680.0)
 
-# ** test: quote_set_defaults
-def test_quote_set_defaults() -> None:
+# ** test: quotations_defaults
+def test_quotations_defaults() -> None:
     '''
     Test that empty quotations has no quotes, symbols, warnings or failures.
     '''

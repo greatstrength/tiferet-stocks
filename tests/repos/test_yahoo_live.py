@@ -38,8 +38,8 @@ def test_live_quotes() -> None:
     Opt-in live check that the Yahoo chart format still yields float-priced quotes.
     '''
 
-    quote_set = YahooChartPriceRepository().get_quotes(['AAPL', 'SPY'])
+    quotations = YahooChartPriceRepository().get_quotes(['AAPL', 'SPY'])
 
-    assert isinstance(quote_set.quotes['AAPL'].price, float)
-    assert quote_set.quotes['SPY'].source == 'yahoo_chart'
-    assert quote_set.failures == []
+    assert isinstance(quotations.quotes['AAPL'].price, float)
+    assert quotations.quotes['SPY'].source == 'yahoo_chart'
+    assert quotations.failures == []

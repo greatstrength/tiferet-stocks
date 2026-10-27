@@ -112,11 +112,11 @@ def test_quotes_get(app) -> None:
     :type app: AppSessionContext
     '''
 
-    quote_set = app.run('quotes.get', data={'symbols': ['SPY']})
+    quotations = app.run('quotes.get', data={'symbols': ['SPY']})
 
-    assert isinstance(quote_set.quotes['SPY'].price, float)
-    assert quote_set.quotes['SPY'].source == 'yahoo_chart'
-    assert quote_set.symbols['SPY'].exchange == 'NYSE_ARCA'
+    assert isinstance(quotations.quotes['SPY'].price, float)
+    assert quotations.quotes['SPY'].source == 'yahoo_chart'
+    assert quotations.symbols['SPY'].exchange == 'NYSE_ARCA'
 
 # ** test: quotes_get_static_provider_swap
 def test_quotes_get_static_provider_swap(tmp_path, monkeypatch) -> None:
@@ -144,12 +144,12 @@ def test_quotes_get_static_provider_swap(tmp_path, monkeypatch) -> None:
     # Run quotes.get with the network blocked.
     with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network used')):
         app = App('stocks_client', app_config=str(tmp_path / 'config.yml'))
-        quote_set = app.run('quotes.get', data={'symbols': ['AAPL', 'NOPE']})
+        quotations = app.run('quotes.get', data={'symbols': ['AAPL', 'NOPE']})
         with pytest.raises(TiferetAPIError) as exc_info:
             app.run('quotes.get', data={'symbols': ['NOPE']})
 
-    assert quote_set.quotes['AAPL'].source == 'static'
-    assert [failure.symbol_id for failure in quote_set.failures] == ['NOPE']
+    assert quotations.quotes['AAPL'].source == 'static'
+    assert [failure.symbol_id for failure in quotations.failures] == ['NOPE']
     assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
     assert exc_info.value.message == 'No quotes are available for the requested symbols: NOPE.'
 
