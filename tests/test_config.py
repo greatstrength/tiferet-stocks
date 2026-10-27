@@ -184,10 +184,8 @@ def test_quotes_history() -> None:
 
     # Run quotes.history.
     with mock.patch('urllib.request.urlopen', return_value=response):
-        history = App('stocks_client', app_config=CONFIG_PATH).run('quotes.history', data={'symbol': 'AAPL', 'start': '2026-10-20', 'end': '2026-10-22'})
+        bars = App('stocks_client', app_config=CONFIG_PATH).run('quotes.history', data={'symbol': 'AAPL', 'start': '2026-10-20', 'end': '2026-10-22'})
 
-    bars = history.bars
-    assert (history.symbol_id, history.start, history.end, history.failure) == ('AAPL', '2026-10-20', '2026-10-22', None)
     assert [bar.date for bar in bars] == ['2026-10-20', '2026-10-21', '2026-10-22']
     assert isinstance(bars[0].close, float)
 
@@ -217,8 +215,8 @@ def test_quotes_history_static_provider_swap(tmp_path, monkeypatch) -> None:
     # Run quotes.history with the network blocked.
     with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network used')):
         app = App('stocks_client', app_config=str(tmp_path / 'config.yml'))
-        bars = app.run('quotes.history', data={'symbol': 'AAPL', 'start': '2026-10-19', 'end': '2026-10-23'}).bars
-        empty = app.run('quotes.history', data={'symbol': 'AAPL', 'start': '2026-10-24', 'end': '2026-10-25'}).bars
+        bars = app.run('quotes.history', data={'symbol': 'AAPL', 'start': '2026-10-19', 'end': '2026-10-23'})
+        empty = app.run('quotes.history', data={'symbol': 'AAPL', 'start': '2026-10-24', 'end': '2026-10-25'})
         with pytest.raises(TiferetAPIError) as unavailable:
             app.run('quotes.history', data={'symbol': 'NOPE', 'start': '2026-10-19', 'end': '2026-10-23'})
         with pytest.raises(TiferetAPIError) as invalid:

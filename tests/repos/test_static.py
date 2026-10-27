@@ -12,7 +12,6 @@ import pytest
 
 # ** app
 from tiferet_stocks import assets as a
-from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.repos.static import StaticPriceRepository
 
 # *** constants
@@ -151,7 +150,6 @@ def test_get_history_from_csv() -> None:
         history = repo.get_history('AAPL', '2026-10-19', '2026-10-21')
 
     patched_open.assert_not_called()
-    assert isinstance(history, PriceHistoryAggregate)
     assert history.failure is None
     assert [bar.date for bar in history.bars] == ['2026-10-19', '2026-10-20', '2026-10-21']
     assert isinstance(history.bars[0].close, float)

@@ -19,7 +19,6 @@ import pytest
 
 # ** app
 from tiferet_stocks import assets as a
-from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.repos.yahoo import (
     YAHOO_ASSET_TYPE_MAP,
     YAHOO_EXCHANGE_MAP,
@@ -714,7 +713,6 @@ def test_get_history_recorded_payload(repo: YahooChartPriceRepository, urlopen: 
 
     history = repo.get_history('AAPL', '2026-10-20', '2026-10-22')
 
-    assert isinstance(history, PriceHistoryAggregate)
     assert history.failure is None
     assert [bar.date for bar in history.bars] == ['2026-10-20', '2026-10-21', '2026-10-22']
     bar = history.bars[0]

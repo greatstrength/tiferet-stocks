@@ -4,12 +4,14 @@
 
 # ** core
 from datetime import date
+from typing import List
+
 # ** infra
 from tiferet.events import DomainEvent
 
 # ** app
 from .. import assets as a
-from ..domain import PriceHistory
+from ..domain import PriceBar
 from ..interfaces import PriceService
 
 # *** events
@@ -37,9 +39,9 @@ class GetHistory(DomainEvent):
 
     # * method: execute
     @DomainEvent.parameters_required(['symbol', 'start', 'end'])
-    def execute(self, symbol: str, start: str, end: str, **kwargs) -> PriceHistory:
+    def execute(self, symbol: str, start: str, end: str, **kwargs) -> List[PriceBar]:
         '''
-        Get the price history with its daily bars, oldest first; a provider failure raises HISTORY_UNAVAILABLE.
+        Get the daily bars, oldest first; a provider failure raises HISTORY_UNAVAILABLE.
 
         :param symbol: The requested symbol id (ticker).
         :type symbol: str
@@ -49,8 +51,8 @@ class GetHistory(DomainEvent):
         :type end: str
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
-        :return: The price history for the symbol and range; its bars are empty when the range has no trading days.
-        :rtype: PriceHistory
+        :return: The bars within the range, oldest first; empty when the range has no trading days.
+        :rtype: List[PriceBar]
         '''
 
         # Both dates must be ISO dates in YYYY-MM-DD form.
@@ -88,5 +90,5 @@ class GetHistory(DomainEvent):
             failure=failure.model_dump() if failure else None,
         )
 
-        # Return the price history as is.
-        return history
+        # Return the bars.
+        return history.bars

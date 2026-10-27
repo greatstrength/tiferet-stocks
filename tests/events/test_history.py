@@ -13,7 +13,6 @@ from tiferet.events import DomainEvent
 
 # ** app
 from tiferet_stocks.domain import PriceBar, PriceHistory, QuoteFailure
-from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.events import GetHistory
 from tiferet_stocks.interfaces import PriceService
 
@@ -31,7 +30,7 @@ def price_service() -> mock.Mock:
 # *** functions
 
 # ** function: run
-def run(price_service: mock.Mock, **kwargs) -> PriceHistory:
+def run(price_service: mock.Mock, **kwargs) -> list:
     '''
     Run GetHistory with the mock price service.
 
@@ -40,7 +39,7 @@ def run(price_service: mock.Mock, **kwargs) -> PriceHistory:
     :param kwargs: The event parameters.
     :type kwargs: dict
     :return: The event result.
-    :rtype: PriceHistory
+    :rtype: list
     '''
 
     # Handle the event with its one dependency.
@@ -48,30 +47,27 @@ def run(price_service: mock.Mock, **kwargs) -> PriceHistory:
 
 # *** tests
 
-# ** test: get_history_returns_history
-def test_get_history_returns_history(price_service: mock.Mock) -> None:
+# ** test: get_history_bars
+def test_get_history_bars(price_service: mock.Mock) -> None:
     '''
-    Test that the price history from the provider is returned as is.
+    Test that the bars from the provider are returned as they are.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
     '''
 
     bar = PriceBar(symbol_id='AAPL', date='2026-10-19', open=1, high=2, low=1, close=2, volume=10)
-    history = PriceHistoryAggregate(symbol_id='AAPL', start='2026-10-19', end='2026-10-23', bars=[bar])
-    price_service.get_history.return_value = history
+    price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-19', end='2026-10-23', bars=[bar])
 
-    result = run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-23')
+    bars = run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-23')
 
-    assert result is history
-    assert isinstance(result, PriceHistory)
-    assert (result.symbol_id, result.start, result.end, result.bars, result.failure) == ('AAPL', '2026-10-19', '2026-10-23', [bar], None)
+    assert bars == [bar]
     price_service.get_history.assert_called_once_with('AAPL', '2026-10-19', '2026-10-23')
 
 # ** test: get_history_empty_range
 def test_get_history_empty_range(price_service: mock.Mock) -> None:
     '''
-    Test that a valid range with no trading days returns a history with no bars and raises nothing.
+    Test that a valid range with no trading days returns an empty list and raises nothing.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
@@ -79,7 +75,7 @@ def test_get_history_empty_range(price_service: mock.Mock) -> None:
 
     price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-24', end='2026-10-25')
 
-    assert run(price_service, symbol='AAPL', start='2026-10-24', end='2026-10-25').bars == []
+    assert run(price_service, symbol='AAPL', start='2026-10-24', end='2026-10-25') == []
 
 # ** test: get_history_single_day
 def test_get_history_single_day(price_service: mock.Mock) -> None:
@@ -92,7 +88,7 @@ def test_get_history_single_day(price_service: mock.Mock) -> None:
 
     price_service.get_history.return_value = PriceHistory(symbol_id='AAPL', start='2026-10-19', end='2026-10-19')
 
-    assert run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-19').bars == []
+    assert run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-19') == []
 
 # ** test: get_history_unavailable
 @pytest.mark.parametrize('reason', ['not_found', 'http_error', 'timeout', 'bad_payload'])
