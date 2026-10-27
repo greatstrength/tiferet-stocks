@@ -116,7 +116,7 @@ Verdict: **variable** on axes 1 and 2; this is the edge of the domain by design.
 
 *Return the latest quote for each requested ticker, with every miss named.*
 
-Planned event: `GetQuotes` on the price service. The default provider tries each ticker, retries once on failure, and records a quote or a quote failure; endpoint URLs, timeout and retry count are provider parameters that configuration can override. The event raises the catalogued error QUOTES_UNAVAILABLE only when every ticker fails; partial failure is data, not an exception. Symbols in the same response are filled into the quote set.
+Planned event: `GetQuotes` on the price service. The default provider tries each ticker, retries once on failure, and records a quote or a quote failure; endpoint URLs, timeout and retry count are provider parameters that configuration can override. The event raises the catalogued error QUOTES_UNAVAILABLE only when every ticker fails; partial failure is data, not an exception. Symbols in the same response are filled into the quotations.
 
 Verdict: **agnostic** in pipeline and failure reporting; **variable** on axis 1.
 
@@ -229,7 +229,7 @@ Outside the domain:
 Candidate changes, each scoped for its own RFP or TRD:
 
 1. Symbol vocabulary: Symbol, the `EXCHANGES` and `ASSET_TYPES` constants, and the symbol warning, with domain tests for every allowed and rejected value.
-2. Quote models and contracts: quote, price bar, quote failure, quote set and symbol lookup, plus the price service and symbol lookup service.
+2. Quote models and contracts: quote, price bar, quote failure, quotations and symbol lookup, plus the price service and symbol lookup service.
 3. The Yahoo chart provider: quotes, daily history and symbol details from one endpoint, one retry, named failures, and the exchange and asset-type code maps, tested with recorded responses and one opt-in live check.
 4. The static provider for tests: prices from a mapping, a YAML or JSON file, or CSV daily bars.
 5. Symbol events: GetSymbol, ResolveSymbols and ListExchanges, with expected-exchange checks.
