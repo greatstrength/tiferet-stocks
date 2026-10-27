@@ -814,6 +814,7 @@ def test_get_history_failures(repo: YahooChartPriceRepository,
 
     history = repo.get_history('AAPL', '2026-10-19', '2026-10-23')
 
+    assert isinstance(history, PriceHistoryAggregate)
     assert history.bars == []
     assert (history.failure.reason, history.failure.attempts) == (reason, attempts)
 
@@ -1000,10 +1001,10 @@ def test_get_history_unusable_timestamps(repo: YahooChartPriceRepository, urlope
     assert history.failure.reason == 'bad_payload'
 
 # ** test: get_history_unusable_price
-@pytest.mark.parametrize('price', [float('nan'), float('inf'), True, '1.0'])
+@pytest.mark.parametrize('price', [float('nan'), float('inf'), True, '1.0', None])
 def test_get_history_unusable_price(repo: YahooChartPriceRepository, urlopen: mock.Mock, price: Any) -> None:
     '''
-    Test that an unusable price is a bad_payload failure, unlike a day padded with nulls.
+    Test that an unusable price, including one null price on an otherwise priced day, is a bad_payload failure, unlike a day padded with nulls.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository

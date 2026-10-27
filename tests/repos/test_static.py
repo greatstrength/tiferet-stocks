@@ -177,6 +177,7 @@ def test_get_history_unknown_symbol() -> None:
 
     history = StaticPriceRepository(history_path=HISTORY_PATH).get_history('NOPE', '2026-10-19', '2026-10-21')
 
+    assert isinstance(history, PriceHistoryAggregate)
     assert history.failure.reason == 'not_found'
 
 # ** test: get_history_bad_rows
@@ -205,5 +206,6 @@ def test_get_history_bad_rows(tmp_path, row: str) -> None:
 
     history = StaticPriceRepository(history_path=str(path)).get_history('X', '2026-10-19', '2026-10-19')
 
+    assert isinstance(history, PriceHistoryAggregate)
     assert history.bars == []
     assert history.failure.reason == 'bad_payload'
