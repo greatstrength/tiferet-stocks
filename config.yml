@@ -1,0 +1,48 @@
+sessions:
+  stocks_client:
+    name: Stocks Client
+    description: Reference client session for tiferet-stocks features.
+
+services:
+  symbol_lookup_service:
+    module_path: tiferet_stocks.repos.yahoo
+    class_name: YahooChartPriceRepository
+    params:
+      timeout: '10'
+      retries: '1'
+  get_symbol_event:
+    module_path: tiferet_stocks.events.symbol
+    class_name: GetSymbol
+  resolve_symbols_event:
+    module_path: tiferet_stocks.events.symbol
+    class_name: ResolveSymbols
+  list_exchanges_event:
+    module_path: tiferet_stocks.events.symbol
+    class_name: ListExchanges
+
+features:
+  symbols:
+    get:
+      name: Get Symbol
+      description: Looks up one symbol and checks it against an optional expected exchange
+      params_schema:
+        id: str
+        exchange:
+          type: str
+          required: false
+      steps:
+        - service_id: get_symbol_event
+          name: Look up the symbol
+    resolve:
+      name: Resolve Symbols
+      description: Looks up many symbols and reports mismatches and unresolved ids as failures
+      steps:
+        - service_id: resolve_symbols_event
+          name: Resolve the symbols
+  exchanges:
+    list:
+      name: List Exchanges
+      description: Lists the exchange ids the domain recognizes
+      steps:
+        - service_id: list_exchanges_event
+          name: List the exchanges

@@ -1,0 +1,59 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "TCEHY",
+          "exchangeName": "PNK",
+          "fullExchangeName": "OTC Markets OTCPK",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1793116154,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 49.39,
+          "regularMarketChangePercent": 0.796,
+          "chartPreviousClose": 49.0,
+          "longName": "Tencent Holdings Limited",
+          "shortName": "Tencent Holding Ltd.",
+          "priceHint": 2,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793116154
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "low": [
+                48.970001220703125
+              ],
+              "open": [
+                49.16999816894531
+              ],
+              "close": [
+                49.38999938964844
+              ],
+              "high": [
+                49.5
+              ],
+              "volume": [
+                345466
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                49.38999938964844
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}

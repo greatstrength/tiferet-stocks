@@ -1,0 +1,59 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "IBM",
+          "exchangeName": "NYQ",
+          "fullExchangeName": "NYSE",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1793117138,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 249.97,
+          "regularMarketChangePercent": -1.369,
+          "chartPreviousClose": 253.44,
+          "longName": "International Business Machines Corporation",
+          "shortName": "International Business Machines",
+          "priceHint": 2,
+          "dataGranularity": "1d",
+          "range": "1d"
+        },
+        "timestamp": [
+          1793117138
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "high": [
+                253.17999267578125
+              ],
+              "close": [
+                249.9700927734375
+              ],
+              "low": [
+                249.16000366210938
+              ],
+              "volume": [
+                1209132
+              ],
+              "open": [
+                251.9324951171875
+              ]
+            }
+          ],
+          "adjclose": [
+            {
+              "adjclose": [
+                249.9700927734375
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}
