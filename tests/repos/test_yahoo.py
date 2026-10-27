@@ -6,6 +6,7 @@
 import io
 import json
 import os
+from datetime import datetime, timezone
 import socket
 from http import client as http_client
 from typing import Any, List
@@ -16,6 +17,7 @@ from urllib import error as url_error
 import pytest
 
 # ** app
+from tiferet_stocks import assets as a
 from tiferet_stocks.repos.yahoo import (
     YAHOO_ASSET_TYPE_MAP,
     YAHOO_EXCHANGE_MAP,
@@ -425,3 +427,248 @@ def test_lookup_connection_error_exhausted(repo: YahooChartPriceRepository, urlo
     assert lookup.failures[0].symbol_id == 'AAPL'
     assert lookup.failures[0].reason == 'http_error'
     assert lookup.failures[0].attempts == 2
+
+# ** test: get_quotes_recorded_payload
+def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a recorded success payload yields a float-priced quote and the symbol from the same response.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    meta = json.loads(read_payload('aapl'))['chart']['result'][0]['meta']
+    urlopen.return_value = make_response(read_payload('aapl'))
+
+    quotations = repo.get_quotes(['AAPL'])
+    quote = quotations.quotes['AAPL']
+
+    assert isinstance(quote.price, float)
+    assert quote.price == meta['regularMarketPrice']
+    assert quote.previous_close == meta['chartPreviousClose']
+    assert quote.change_pct == round((meta['regularMarketPrice'] - meta['chartPreviousClose']) / meta['chartPreviousClose'] * 100, 4)
+    assert quote.market_time == datetime.fromtimestamp(meta['regularMarketTime'], tz=timezone.utc).isoformat()
+    assert quote.currency == 'USD'
+    assert quote.source == 'yahoo_chart'
+    assert quotations.symbols['AAPL'].exchange == 'NASDAQ'
+    assert quotations.failures == []
+    assert quotations.fetched_at
+
+# ** test: get_quotes_carries_symbol_warnings
+def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that an unmapped exchange is a soft warning on the quotations, not a failure.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('tcehy'))
+
+    quotations = repo.get_quotes(['TCEHY'])
+
+    assert 'TCEHY' in quotations.quotes
+    assert [(w.reason, w.detail) for w in quotations.warnings] == [('unmapped_exchange', 'PNK')]
+    assert quotations.failures == []
+
+# ** test: get_quotes_failures
+@pytest.mark.parametrize('side_effect, reason, attempts', [
+    ([make_http_error(404)], 'not_found', 1),
+    ([make_http_error(500), make_http_error(502)], 'http_error', 2),
+    ([socket.timeout('timed out'), socket.timeout('timed out')], 'timeout', 2),
+])
+def test_get_quotes_failures(repo: YahooChartPriceRepository,
+                             urlopen: mock.Mock,
+                             side_effect: List[Any],
+                             reason: str,
+                             attempts: int) -> None:
+    '''
+    Test that provider failures become named quote failures with their attempt counts.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param side_effect: The urlopen outcomes in order.
+    :type side_effect: List[Any]
+    :param reason: The expected failure reason.
+    :type reason: str
+    :param attempts: The expected attempt count.
+    :type attempts: int
+    '''
+
+    urlopen.side_effect = side_effect
+
+    quotations = repo.get_quotes(['AAPL'])
+
+    assert quotations.quotes == {}
+    assert quotations.failures[0].reason == reason
+    assert quotations.failures[0].attempts == attempts
+
+# ** test: get_quotes_malformed_json
+def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that malformed JSON is a bad_payload failure.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(b'{not json')
+
+    quotations = repo.get_quotes(['AAPL'])
+
+    assert quotations.failures[0].reason == 'bad_payload'
+
+# ** test: get_quotes_missing_price
+@pytest.mark.parametrize('price', [None, 'n/a', True, float('nan')])
+def test_get_quotes_missing_price(repo: YahooChartPriceRepository, urlopen: mock.Mock, price: Any) -> None:
+    '''
+    Test that a payload without a numeric price is a bad_payload failure.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param price: The replacement price value.
+    :type price: Any
+    '''
+
+    payload = json.loads(read_payload('aapl'))
+    payload['chart']['result'][0]['meta']['regularMarketPrice'] = price
+    urlopen.return_value = make_response(json.dumps(payload).encode())
+
+    quotations = repo.get_quotes(['AAPL'])
+
+    assert quotations.quotes == {}
+    assert quotations.failures[0].reason == 'bad_payload'
+
+# ** test: get_quotes_timeout_then_success
+def test_get_quotes_timeout_then_success(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a timeout followed by success yields a quote, proving the single retry.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.side_effect = [socket.timeout('timed out'), make_response(read_payload('spy'))]
+
+    quotations = repo.get_quotes(['SPY'])
+
+    assert quotations.quotes['SPY'].source == 'yahoo_chart'
+    assert quotations.failures == []
+    assert urlopen.call_count == 2
+
+# ** test: get_quotes_every_id_once
+def test_get_quotes_every_id_once(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that every requested id appears exactly once, in quotes or in failures.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.side_effect = [make_response(read_payload('aapl')), make_http_error(404), make_response(read_payload('spy'))]
+
+    quotations = repo.get_quotes(['AAPL', 'ZZZZQ', 'SPY', 'AAPL'])
+    seen = list(quotations.quotes) + [failure.symbol_id for failure in quotations.failures]
+
+    assert sorted(seen) == ['AAPL', 'SPY', 'ZZZZQ']
+    assert urlopen.call_count == 3
+
+# ** test: init_clamps_negative_retries
+def test_init_clamps_negative_retries() -> None:
+    '''
+    Test that a negative retries value still makes one attempt.
+    '''
+
+    assert YahooChartPriceRepository(retries='-1').retries == 0
+
+# ** test: get_quotes_unusable_previous_close
+@pytest.mark.parametrize('previous_close', ['250.0', True, float('nan'), -50.0, 0])
+def test_get_quotes_unusable_previous_close(repo: YahooChartPriceRepository,
+                                            urlopen: mock.Mock,
+                                            previous_close: Any) -> None:
+    '''
+    Test that an unusable previous close leaves previous_close and change_pct empty but keeps the quote.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param previous_close: The replacement previous close value.
+    :type previous_close: Any
+    '''
+
+    payload = json.loads(read_payload('aapl'))
+    payload['chart']['result'][0]['meta']['chartPreviousClose'] = previous_close
+    urlopen.return_value = make_response(json.dumps(payload).encode())
+
+    quote = repo.get_quotes(['AAPL']).quotes['AAPL']
+
+    assert quote.previous_close is None
+    assert quote.change_pct is None
+
+# ** test: init_source_default
+def test_init_source_default() -> None:
+    '''
+    Test that the default source matches the catalogued Yahoo chart provider id and can be overridden.
+    '''
+
+    assert YahooChartPriceRepository().source == a.YAHOO_CHART_PROVIDER_ID
+    assert YahooChartPriceRepository(source='yahoo_alt').source == 'yahoo_alt'
+
+# ** test: get_quotes_unusable_market_time
+@pytest.mark.parametrize('market_time', [1e20, -1e20, 1e18, 3e11, float('nan'), True, 'soon'])
+def test_get_quotes_unusable_market_time(repo: YahooChartPriceRepository,
+                                         urlopen: mock.Mock,
+                                         market_time: Any) -> None:
+    '''
+    Test that an unusable or out-of-range market time keeps the quote with market_time empty and keeps the rest of the batch.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param market_time: The replacement market time value.
+    :type market_time: Any
+    '''
+
+    payload = json.loads(read_payload('aapl'))
+    payload['chart']['result'][0]['meta']['regularMarketTime'] = market_time
+    urlopen.side_effect = [
+        make_response(json.dumps(payload).encode()),
+        make_response(read_payload('spy')),
+    ]
+
+    quotations = repo.get_quotes(['AAPL', 'SPY'])
+
+    assert quotations.quotes['AAPL'].market_time is None
+    assert quotations.quotes['SPY'].market_time is not None
+    assert quotations.failures == []
+
+# ** test: get_quotes_source_override
+def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
+    '''
+    Test that a configured source reaches each quote.
+
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('aapl'))
+
+    quotations = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
+
+    assert quotations.quotes['AAPL'].source == 'alt'

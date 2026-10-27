@@ -10,7 +10,7 @@ from typing import List
 from tiferet.interfaces import Service
 
 # ** app
-from ..domain import SymbolLookup
+from ..mappers import SymbolLookup
 
 # *** interfaces
 
