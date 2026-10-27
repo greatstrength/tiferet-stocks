@@ -64,7 +64,7 @@ Everything else is identical across the axes.
 
 **Price bar** - one day of history for a symbol id: date, open, high, low, close, and optional adjusted close and volume.
 
-**Quote failure** - a named reason a symbol produced no result: not_found, http_error, timeout or bad_payload, with detail and the number of attempts.
+**Quote failure** - a named reason a symbol produced no result: not_found, http_error, timeout, bad_payload or symbol_mismatch, with detail and the number of attempts. Only symbol resolution reports symbol_mismatch, when the symbol exists but its ticker or exchange differs from the expected one; detail carries the expected and actual values. The quote path never reports it.
 
 **Quote set** - one quote call's answer: quotes by symbol id, symbols filled from the same response, warnings, failures and the fetch time.
 
