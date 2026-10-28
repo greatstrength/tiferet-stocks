@@ -12,8 +12,9 @@ from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
-from tiferet_stocks.domain import Quote, QuoteFailure, Quotations
+from tiferet_stocks.domain import Quote, QuoteFailure
 from tiferet_stocks.events import GetQuotes
+from tiferet_stocks.mappers import QuotationsAggregate
 from tiferet_stocks.interfaces import PriceService
 
 # *** fixtures
@@ -38,7 +39,7 @@ def test_get_quotes_partial_failure(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(
+    price_service.get_quotes.return_value = QuotationsAggregate(
         quotes={'AAPL': Quote(symbol_id='AAPL', price=251.5, source='static')},
         failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
     )
@@ -58,7 +59,7 @@ def test_get_quotes_all_failed(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(
+    price_service.get_quotes.return_value = QuotationsAggregate(
         failures=[
             QuoteFailure(symbol_id='NOPE', reason='not_found'),
             QuoteFailure(symbol_id='GONE', reason='timeout', attempts=2),
@@ -81,7 +82,7 @@ def test_get_quotes_single_string(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
+    price_service.get_quotes.return_value = QuotationsAggregate(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
 
     DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols='SPY')
 
@@ -96,7 +97,7 @@ def test_get_quotes_depends_only_on_price_service(price_service: mock.Mock) -> N
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
+    price_service.get_quotes.return_value = QuotationsAggregate(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
 
     with mock.patch('builtins.open') as patched_open:
         DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['SPY'])

@@ -21,7 +21,7 @@ from ..mappers import (
     usable_number,
     Quote,
     QuoteFailure,
-    Quotations,
+    QuotationsAggregate,
     PriceBar,
     PriceHistoryAggregate,
 )
@@ -85,14 +85,14 @@ class StaticPriceRepository(PriceService):
                     self.history.setdefault(row.get('symbol_id'), []).append(row)
 
     # * method: get_quotes
-    def get_quotes(self, symbols: List[str]) -> Quotations:
+    def get_quotes(self, symbols: List[str]) -> QuotationsAggregate:
         '''
         Get the fixed quote for each requested symbol id.
 
         :param symbols: The requested symbol ids (tickers).
         :type symbols: List[str]
         :return: The quotes by requested id, with a not_found failure for each unknown id.
-        :rtype: Quotations
+        :rtype: QuotationsAggregate
         '''
 
         # Build a quote or a not_found failure for each distinct id.
@@ -126,7 +126,7 @@ class StaticPriceRepository(PriceService):
             )
 
         # Return the quotations.
-        return Quotations(
+        return QuotationsAggregate(
             quotes=quotes,
             failures=failures,
             fetched_at=datetime.now(timezone.utc).isoformat(),

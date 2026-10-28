@@ -19,7 +19,7 @@ import pytest
 
 # ** app
 from tiferet_stocks import assets as a
-from tiferet_stocks.mappers import PriceHistoryAggregate
+from tiferet_stocks.mappers import PriceHistoryAggregate, QuotationsAggregate
 from tiferet_stocks.repos.yahoo import (
     YAHOO_ASSET_TYPE_MAP,
     YAHOO_EXCHANGE_MAP,
@@ -469,6 +469,7 @@ def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: m
     urlopen.return_value = make_response(read_payload('aapl'))
 
     quotations = repo.get_quotes(['AAPL'])
+    assert isinstance(quotations, QuotationsAggregate)
     quote = quotations.quotes['AAPL']
 
     assert isinstance(quote.price, float)

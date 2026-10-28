@@ -33,6 +33,9 @@ from ..domain import (
 from .history import (
     PriceHistoryAggregate,
 )
+from .quotations import (
+    QuotationsAggregate,
+)
 from .symbol import (
     SymbolAggregate,
     SymbolYahooObject,

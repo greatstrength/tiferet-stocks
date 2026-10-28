@@ -12,7 +12,7 @@ import pytest
 
 # ** app
 from tiferet_stocks import assets as a
-from tiferet_stocks.mappers import PriceHistoryAggregate
+from tiferet_stocks.mappers import PriceHistoryAggregate, QuotationsAggregate
 from tiferet_stocks.repos.static import StaticPriceRepository
 
 # *** constants
@@ -33,6 +33,7 @@ def test_get_quotes_from_yaml_fixture() -> None:
 
     quotations = StaticPriceRepository(fixture_path=FIXTURE_PATH).get_quotes(['AAPL', 'SPY', 'NOPE'])
 
+    assert isinstance(quotations, QuotationsAggregate)
     assert quotations.quotes['AAPL'].price == 251.5
     assert quotations.quotes['AAPL'].change_pct == 0.6
     assert isinstance(quotations.quotes['SPY'].price, float)
