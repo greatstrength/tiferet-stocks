@@ -43,7 +43,7 @@ def watchlist_app(tmp_path: Path, monkeypatch):
 
 # *** tests
 
-# ** test_int: first_create_and_all_features
+# ** test: first_create_and_all_features
 def test_first_create_and_all_features(watchlist_app) -> None:
     '''
     Exercise every feature, first-save creation, stamping and read invariance.
@@ -93,7 +93,7 @@ def test_first_create_and_all_features(watchlist_app) -> None:
     assert [item.id for item in app.run('watchlists.list')] == ['two']
     assert app.run('watchlists.get', data={'id': 'two'}).created_at == first
 
-# ** test_int: catalogued_messages_and_no_write_on_error
+# ** test: catalogued_messages_and_no_write_on_error
 @pytest.mark.parametrize('feature, data, code, message', [
     ('watchlists.get', {'id': 'absent'}, 'WATCHLIST_NOT_FOUND', 'Watchlist not found: absent.'),
     ('watchlists.create', {'id': 'one', 'name': 'Taken'}, 'WATCHLIST_EXISTS', 'Watchlist already exists: one.'),
@@ -137,7 +137,7 @@ def test_catalogued_messages_and_no_write_on_error(watchlist_app,
     assert path.read_bytes() == original
     assert path.stat().st_mtime_ns == mtime
 
-# ** test_int: duplicate_initial_ids_do_not_create_file
+# ** test: duplicate_initial_ids_do_not_create_file
 def test_duplicate_initial_ids_do_not_create_file(watchlist_app) -> None:
     '''
     Initial duplicates fail through the error catalog before first-save creation.
@@ -155,7 +155,7 @@ def test_duplicate_initial_ids_do_not_create_file(watchlist_app) -> None:
     assert not path.exists()
     assert not path.parent.exists()
 
-# ** test_int: default_error_catalog_matches_assets
+# ** test: default_error_catalog_matches_assets
 def test_default_error_catalog_matches_assets() -> None:
     '''
     Keep all five watchlist catalog entries equal to their exported defaults.

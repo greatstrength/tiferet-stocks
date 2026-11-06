@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 from pydantic import ValidationError
+from tiferet import use_tester
 from tiferet.interfaces import ServiceError
 
 # ** app
@@ -19,7 +20,7 @@ from tiferet_stocks.repos.watchlist import WatchlistConfigRepository
 
 # *** tests
 
-# ** test_int: missing_file_reads_do_not_create_storage
+# ** test: missing_file_reads_do_not_create_storage
 @pytest.mark.parametrize('extension', ['yml', 'yaml', 'json'])
 def test_missing_file_reads_do_not_create_storage(tmp_path: Path, extension: str) -> None:
     '''
@@ -41,7 +42,7 @@ def test_missing_file_reads_do_not_create_storage(tmp_path: Path, extension: str
     assert not path.exists()
     assert not path.parent.exists()
 
-# ** test_int: first_save_and_round_trip
+# ** test: first_save_and_round_trip
 @pytest.mark.parametrize('extension', ['yml', 'yaml', 'json'])
 def test_first_save_and_round_trip(tmp_path: Path, extension: str) -> None:
     '''
@@ -72,7 +73,7 @@ def test_first_save_and_round_trip(tmp_path: Path, extension: str) -> None:
     assert data['watchlists']['etfs']['symbol_ids'] == ['SPY', 'QQQ', 'XLK']
     assert data['watchlists']['etfs']['description'] == 'Caf\u00e9'
 
-# ** test_int: save_replace_delete_preserves_other_data
+# ** test: save_replace_delete_preserves_other_data
 @pytest.mark.parametrize('extension', ['yml', 'json'])
 def test_save_replace_delete_preserves_other_data(tmp_path: Path, extension: str) -> None:
     '''
@@ -114,7 +115,7 @@ def test_save_replace_delete_preserves_other_data(tmp_path: Path, extension: str
     repo.delete('absent')
     assert path.read_bytes() == original_bytes
 
-# ** test_int: starter_and_reference_configuration
+# ** test: starter_and_reference_configuration
 def test_starter_and_reference_configuration() -> None:
     '''
     Keep the starter empty and the reference service format-neutral.
@@ -129,7 +130,7 @@ def test_starter_and_reference_configuration() -> None:
     assert service['params']['watchlist_config'] == 'data/watchlists.yml'
     assert yaml.safe_load((root / 'data/watchlists.yml').read_text()) == {'watchlists': {}}
 
-# ** test_int: unsupported_extension_is_not_empty
+# ** test: unsupported_extension_is_not_empty
 @pytest.mark.parametrize('operation', ['get', 'list', 'save', 'delete'])
 def test_unsupported_extension_is_not_empty(tmp_path: Path, operation: str) -> None:
     '''
@@ -151,7 +152,7 @@ def test_unsupported_extension_is_not_empty(tmp_path: Path, operation: str) -> N
     assert raised.value.error_code == 'UNSUPPORTED_CONFIG_FILE_TYPE'
     assert not path.parent.exists()
 
-# ** test_int: malformed_documents_are_not_overwritten
+# ** test: malformed_documents_are_not_overwritten
 @pytest.mark.parametrize('extension, content', [('yml', 'watchlists: ['), ('json', '{invalid')])
 @pytest.mark.parametrize('operation', ['get', 'list', 'save', 'delete'])
 def test_malformed_documents_are_not_overwritten(tmp_path: Path,
@@ -181,7 +182,7 @@ def test_malformed_documents_are_not_overwritten(tmp_path: Path,
 
     assert path.read_text() == content
 
-# ** test_int: invalid_watchlist_is_not_an_absent_key
+# ** test: invalid_watchlist_is_not_an_absent_key
 def test_invalid_watchlist_is_not_an_absent_key(tmp_path: Path) -> None:
     '''
     An empty invalid body is validated rather than mistaken for a missing key.
@@ -199,7 +200,7 @@ def test_invalid_watchlist_is_not_an_absent_key(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         repo.list()
 
-# ** test_int: access_failure_is_not_empty
+# ** test: access_failure_is_not_empty
 def test_access_failure_is_not_empty(tmp_path: Path, monkeypatch) -> None:
     '''
     A permission failure in the absence check propagates instead of returning emptiness.
@@ -220,7 +221,7 @@ def test_access_failure_is_not_empty(tmp_path: Path, monkeypatch) -> None:
 
     assert not path.exists()
 
-# ** test_int: document_key_owns_identity
+# ** test: document_key_owns_identity
 def test_document_key_owns_identity(tmp_path: Path) -> None:
     '''
     An accidental id in a body cannot replace its document key.
@@ -235,3 +236,74 @@ def test_document_key_owns_identity(tmp_path: Path) -> None:
 
     assert repo.get('correct').id == 'correct'
     assert repo.list()[0].id == 'correct'
+
+# *** testers
+
+# ** tester: test_watchlist_config_repository
+@use_tester(
+    type='repo',
+    target_cls=WatchlistConfigRepository,
+    config_parameter='watchlist_config',
+    exists_cases=[],
+    get_cases=[
+        ('etfs', {
+            'id': 'etfs',
+            'name': 'Broad ETFs',
+            'description': 'Ordered holdings',
+            'created_at': '2026-11-06T14:00:00-07:00',
+            'updated_at': '2026-11-06T14:30:00-07:00',
+            'symbol_ids': ['SPY', 'QQQ', 'XLK'],
+        }),
+        ('absent', None),
+    ],
+    list_ids=['etfs'],
+    delete_ids=['etfs'],
+    aggregate_module_path='tiferet_stocks.mappers.watchlist',
+    aggregate_class_name='WatchlistAggregate',
+    aggregate_sample_data={
+        'id': 'etfs',
+        'name': 'Broad ETFs',
+        'description': 'Ordered holdings',
+        'created_at': '2026-11-06T14:00:00-07:00',
+        'updated_at': '2026-11-06T14:30:00-07:00',
+        'symbol_ids': ['SPY', 'QQQ', 'XLK'],
+    },
+    equality_fields=['id', 'name', 'description', 'created_at', 'updated_at', 'symbol_ids'],
+)
+class TestWatchlistConfigRepository:
+    '''
+    Bind meaningful CRUD assertions to both formats without an exists contract.
+    '''
+
+    # * test: persisted_crud
+    @pytest.mark.parametrize('extension', ['yml', 'json'])
+    def test_persisted_crud(self, test_ctx, session, tmp_path: Path, extension: str):
+        '''
+        Exercise released repository assertions against independent on-disk files.
+
+        :param test_ctx: The bound repository assertion context.
+        :type test_ctx: RepoTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :param tmp_path: The isolated storage directory.
+        :type tmp_path: Path
+        :param extension: The supported persistence format.
+        :type extension: str
+        :return: None.
+        :rtype: None
+        '''
+
+        # Construct through the explicit configuration parameter without creating storage.
+        config_file = str(tmp_path / f'watchlists.{extension}')
+        test_ctx.assert_new(config_file=config_file)
+        repo = test_ctx.make_target(config_file=config_file)
+        assert not Path(config_file).exists()
+
+        # Nonempty declared cases exercise save, present/missing get and list.
+        test_ctx.assert_save(repo)
+        test_ctx.assert_get(repo)
+        test_ctx.assert_list(repo)
+
+        # Delete each declared identifier twice; no exists method is invoked.
+        test_ctx.assert_delete(repo)
+        assert repo.list() == []

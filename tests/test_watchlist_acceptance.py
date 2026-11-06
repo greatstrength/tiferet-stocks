@@ -18,7 +18,7 @@ from tiferet_stocks.repos.watchlist import WatchlistConfigRepository
 
 # *** tests
 
-# ** test_int: feature_format_parity_and_write_boundary
+# ** test: feature_format_parity_and_write_boundary
 @pytest.mark.parametrize('extension', ['yml', 'json'])
 def test_feature_format_parity_and_write_boundary(tmp_path: Path, extension: str) -> None:
     '''
@@ -46,7 +46,7 @@ def test_feature_format_parity_and_write_boundary(tmp_path: Path, extension: str
     assert report['rejected_cases'] == 8
     assert report['audited_writes'] > 0
 
-# ** test_int: bounded_mutations_are_killed
+# ** test: bounded_mutations_are_killed
 @pytest.mark.parametrize('extension', ['yml', 'json'])
 @pytest.mark.parametrize('mutant, evidence', [
     ('wrong_index', 'ORDER:'),
@@ -85,7 +85,7 @@ def test_bounded_mutations_are_killed(tmp_path: Path,
     assert evidence in result.stdout + result.stderr, result.stdout + result.stderr
     assert not (tmp_path / 'rogue.txt').exists()
 
-# ** test_int: documented_watchlists_round_trip
+# ** test: documented_watchlists_round_trip
 @pytest.mark.parametrize('extension', ['yml', 'json'])
 def test_documented_watchlists_round_trip(tmp_path: Path, extension: str) -> None:
     '''

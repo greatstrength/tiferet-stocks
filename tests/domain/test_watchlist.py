@@ -5,6 +5,7 @@
 # ** infra
 import pytest
 from pydantic import ValidationError
+from tiferet import use_tester
 
 # ** app
 from tiferet_stocks.domain import Watchlist
@@ -72,3 +73,40 @@ def test_watchlist_assignment_validation() -> None:
         watchlist.symbol_ids = ['SPY', 'SPY']
 
     assert watchlist.symbol_ids == ['SPY', 'QQQ']
+
+# *** testers
+
+# ** tester: test_watchlist
+@use_tester(
+    type='domain',
+    target_cls=Watchlist,
+    sample_data={
+        'id': 'etfs',
+        'name': 'Broad ETFs',
+        'description': 'Ordered holdings',
+        'created_at': '2026-11-06T14:00:00-07:00',
+        'updated_at': '2026-11-06T14:30:00-07:00',
+        'symbol_ids': ['SPY', 'QQQ', 'XLK'],
+    },
+    equality_fields=['id', 'name', 'description', 'created_at', 'updated_at', 'symbol_ids'],
+)
+class TestWatchlist:
+    '''
+    Bind all six populated watchlist fields to the released domain tester.
+    '''
+
+    # * test: new
+    def test_new(self, test_ctx, session):
+        '''
+        Compare construction with the complete declared watchlist sample.
+
+        :param test_ctx: The bound domain assertion context.
+        :type test_ctx: DomainTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # Exercise the actual tester constructor and all declared equality fields.
+        test_ctx.assert_new()
