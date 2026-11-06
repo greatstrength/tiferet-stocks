@@ -43,3 +43,16 @@ def test_live_quotes() -> None:
     assert isinstance(quotations.quotes['AAPL'].price, float)
     assert quotations.quotes['SPY'].source == 'yahoo_chart'
     assert quotations.failures == []
+
+# ** test: live_history
+@pytest.mark.skipif(os.getenv(LIVE_FLAG) != '1', reason=f'set {LIVE_FLAG}=1 to run live provider checks')
+def test_live_history() -> None:
+    '''
+    Opt-in live check that the Yahoo daily chart format still yields float bars, oldest first.
+    '''
+
+    history = YahooChartPriceRepository().get_history('SPY', '2026-10-19', '2026-10-23')
+
+    assert history.failure is None
+    assert [bar.date for bar in history.bars] == sorted(bar.date for bar in history.bars)
+    assert history.bars and all(isinstance(bar.close, float) for bar in history.bars)

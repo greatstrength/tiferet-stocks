@@ -4,7 +4,7 @@
 
 # ** core
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import socket
 from http import client as http_client
 from typing import Any, Dict, List, Tuple
@@ -35,6 +35,8 @@ from ..mappers import (
     Quote,
     QuoteFailure,
     Quotations,
+    PriceBar,
+    PriceHistoryAggregate,
     SymbolLookup,
     SymbolWarning,
     SymbolAggregate,
@@ -65,6 +67,12 @@ YAHOO_ASSET_TYPE_MAP = {
 # ** constant: default_quote_url
 DEFAULT_QUOTE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1d'
 
+# ** constant: default_history_url
+DEFAULT_HISTORY_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={period1}&period2={period2}&interval=1d'
+
+# ** constant: day_seconds
+DAY_SECONDS = 86400
+
 # ** constant: default_timeout
 DEFAULT_TIMEOUT = '10'
 
@@ -88,6 +96,9 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
     # * attribute: quote_url
     quote_url: str
 
+    # * attribute: history_url
+    history_url: str
+
     # * attribute: timeout
     timeout: float
 
@@ -99,7 +110,8 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
                  quote_url: str = DEFAULT_QUOTE_URL,
                  timeout: str = DEFAULT_TIMEOUT,
                  retries: str = DEFAULT_RETRIES,
-                 source: str = DEFAULT_SOURCE) -> None:
+                 source: str = DEFAULT_SOURCE,
+                 history_url: str = DEFAULT_HISTORY_URL) -> None:
         '''
         Initialize the Yahoo chart repository.
 
@@ -111,6 +123,8 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         :type retries: str
         :param source: The provider id stamped on each quote.
         :type source: str
+        :param history_url: The daily chart endpoint URL template, with {symbol}, {period1} and {period2} placeholders.
+        :type history_url: str
         '''
 
         # Store the endpoint and convert the numeric parameters.
@@ -118,20 +132,23 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         self.timeout = float(timeout)
         self.retries = max(0, int(retries))
         self.source = source
+        self.history_url = history_url
 
     # * method: fetch_chart
-    def fetch_chart(self, symbol_id: str) -> Tuple[Dict[str, Any] | None, QuoteFailure | None, int]:
+    def fetch_chart(self, symbol_id: str, url: str = None) -> Tuple[Dict[str, Any] | None, QuoteFailure | None, int]:
         '''
         Fetch the chart result for one symbol, retrying transient failures.
 
         :param symbol_id: The requested symbol id (ticker).
         :type symbol_id: str
+        :param url: The full request URL; defaults to the quote URL for the symbol.
+        :type url: str
         :return: The chart result or the failure, with the number of attempts made.
         :rtype: Tuple[Dict[str, Any] | None, QuoteFailure | None, int]
         '''
 
         # Build the request for the symbol.
-        url = self.quote_url.format(symbol=parse.quote(symbol_id))
+        url = url or self.quote_url.format(symbol=parse.quote(symbol_id))
         req = request.Request(url, headers={'User-Agent': USER_AGENT})
 
         # Try the request once plus the configured retries.
@@ -357,4 +374,119 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
             warnings=warnings,
             failures=failures,
             fetched_at=fetched_at,
+        )
+
+    # * method: translate_history
+    def translate_history(self,
+                          symbol_id: str,
+                          result: Dict[str, Any],
+                          start: str,
+                          end: str,
+                          attempts: int) -> Tuple[List[PriceBar], QuoteFailure | None]:
+        '''
+        Translate a daily chart result into bars within the range, oldest first.
+
+        :param symbol_id: The requested symbol id (ticker).
+        :type symbol_id: str
+        :param result: The chart result.
+        :type result: Dict[str, Any]
+        :param start: The first day, as an ISO 8601 date (inclusive).
+        :type start: str
+        :param end: The last day, as an ISO 8601 date (inclusive).
+        :type end: str
+        :param attempts: The number of attempts made for the symbol.
+        :type attempts: int
+        :return: The bars and no failure, or no bars and the failure.
+        :rtype: Tuple[List[PriceBar], QuoteFailure | None]
+        '''
+
+        # A range with no trading days has no timestamps; that is an empty answer, not a failure.
+        timestamps = result.get('timestamp') or []
+        if not timestamps:
+            return [], None
+        if not isinstance(timestamps, list):
+            return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart result has no timestamp list.', attempts=attempts)
+
+        # The bar series must line up with the timestamps.
+        indicators = result.get('indicators') if isinstance(result.get('indicators'), dict) else {}
+        quote_list = indicators.get('quote') or [{}]
+        adj_list = indicators.get('adjclose') or [{}]
+        series = quote_list[0] if isinstance(quote_list, list) else None
+        adj_series = adj_list[0] if isinstance(adj_list, list) else None
+        if not isinstance(series, dict) or not isinstance(adj_series, dict):
+            return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart result has no daily series.', attempts=attempts)
+        columns = {name: series.get(name) for name in ('open', 'high', 'low', 'close', 'volume')}
+        columns['adj_close'] = adj_series.get('adjclose')
+        for name, values in columns.items():
+            if values is not None and (not isinstance(values, list) or len(values) != len(timestamps)):
+                return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail=f'Daily series {name} does not match the timestamps.', attempts=attempts)
+        if any(columns[name] is None for name in ('open', 'high', 'low', 'close')):
+            return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Daily series is missing a price column.', attempts=attempts)
+
+        # Date each bar in the exchange time zone.
+        offset = result['meta'].get('gmtoffset')
+        offset = offset if usable_number(offset) else 0
+
+        # Build a bar for each day in range; Yahoo pads halted days with nulls, which are skipped, and a repeated day keeps its last bar.
+        bars = {}
+        for index, stamp in enumerate(timestamps):
+            try:
+                day = datetime.fromtimestamp(stamp + offset, tz=timezone.utc).date().isoformat() if usable_number(stamp) else None
+            except (OverflowError, OSError, ValueError):
+                day = None
+            if day is None:
+                return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Daily series has an unusable timestamp.', attempts=attempts)
+            if not start <= day <= end:
+                continue
+            prices = {name: columns[name][index] for name in ('open', 'high', 'low', 'close')}
+            if all(value is None for value in prices.values()):
+                continue
+            if not all(usable_number(value) for value in prices.values()):
+                return [], QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail=f'Daily series has an unusable price for {day}.', attempts=attempts)
+            adj_close = columns['adj_close'][index] if columns['adj_close'] else None
+            volume = columns['volume'][index] if columns['volume'] else None
+            bars[day] = PriceBar(
+                symbol_id=symbol_id,
+                date=day,
+                adj_close=adj_close if usable_number(adj_close) else None,
+                volume=int(volume) if usable_number(volume) else None,
+                **prices,
+            )
+
+        # Return the bars oldest first.
+        return [bars[day] for day in sorted(bars)], None
+
+    # * method: get_history
+    def get_history(self, symbol: str, start: str, end: str) -> PriceHistoryAggregate:
+        '''
+        Get the daily bars for one symbol between two ISO dates, inclusive, from the Yahoo chart endpoint.
+
+        :param symbol: The requested symbol id (ticker).
+        :type symbol: str
+        :param start: The first day, as an ISO 8601 date (inclusive).
+        :type start: str
+        :param end: The last day, as an ISO 8601 date (inclusive).
+        :type end: str
+        :return: The bars within the range, or the failure.
+        :rtype: PriceHistoryAggregate
+        '''
+
+        # Request the UTC days of the range widened by one day on each side, so exchanges ahead of or behind UTC keep their edge days; bars are trimmed to the range by exchange date.
+        period1 = int(datetime.combine(date.fromisoformat(start), datetime.min.time(), tzinfo=timezone.utc).timestamp()) - DAY_SECONDS
+        period2 = int(datetime.combine(date.fromisoformat(end), datetime.min.time(), tzinfo=timezone.utc).timestamp()) + 2 * DAY_SECONDS
+        url = self.history_url.format(symbol=parse.quote(symbol), period1=period1, period2=period2)
+
+        # Fetch the daily chart and translate its bars.
+        result, failure, attempts = self.fetch_chart(symbol, url)
+        bars = []
+        if not failure:
+            bars, failure = self.translate_history(symbol, result, start, end, attempts)
+
+        # Return the history.
+        return PriceHistoryAggregate(
+            symbol_id=symbol,
+            start=start,
+            end=end,
+            bars=bars,
+            failure=failure,
         )

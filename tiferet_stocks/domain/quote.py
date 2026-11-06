@@ -118,3 +118,33 @@ class Quote(DomainObject):
 
     # * attribute: source
     source: str = Field(..., description='The id of the provider that returned the quote.')
+
+# ** model: price_bar
+class PriceBar(DomainObject):
+    '''
+    One daily bar of price history for one symbol.
+    '''
+
+    # * attribute: symbol_id
+    symbol_id: str = Field(..., description='The symbol id (ticker) the bar is for.')
+
+    # * attribute: date
+    date: str = Field(..., description='The trading day, as an ISO 8601 date in the exchange time zone.')
+
+    # * attribute: open
+    open: float = Field(..., description='The opening price; declared float so it is never coerced to a string.')
+
+    # * attribute: high
+    high: float = Field(..., description='The high price.')
+
+    # * attribute: low
+    low: float = Field(..., description='The low price.')
+
+    # * attribute: close
+    close: float = Field(..., description='The closing price.')
+
+    # * attribute: adj_close
+    adj_close: float | None = Field(default=None, description='The close adjusted for splits and dividends, when the provider returns it.')
+
+    # * attribute: volume
+    volume: int | None = Field(default=None, description='The traded volume, when the provider returns it; declared int so it is never coerced to a string.')

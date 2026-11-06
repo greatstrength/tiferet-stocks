@@ -10,7 +10,7 @@ from typing import List
 from tiferet.interfaces import Service
 
 # ** app
-from ..mappers import Quotations
+from ..mappers import PriceHistory, Quotations
 
 # *** interfaces
 
@@ -33,3 +33,22 @@ class PriceService(Service):
         '''
         # Not implemented.
         raise NotImplementedError('get_quotes method is required for PriceService.')
+
+    # * method: get_history
+    @abstractmethod
+    def get_history(self, symbol: str, start: str, end: str) -> PriceHistory:
+        '''
+        Get the daily bars for one symbol between two ISO dates, inclusive, oldest first.
+
+        :param symbol: The requested symbol id (ticker).
+        :type symbol: str
+        :param start: The first day, as an ISO 8601 date (inclusive).
+        :type start: str
+        :param end: The last day, as an ISO 8601 date (inclusive).
+        :type end: str
+        :return: The bars within the range, or the failure when the provider produced none.
+        :rtype: PriceHistory
+        '''
+
+        # Not implemented.
+        raise NotImplementedError('get_history method is required for PriceService.')

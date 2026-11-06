@@ -11,7 +11,7 @@ services:
       timeout: '10'
       retries: '1'
   # Swap providers by changing this entry; YahooChartPriceRepository also backs symbol_lookup_service, so change both together.
-  # price_service must stay listed before get_quotes_event, or the feature step fails to load (DI order).
+  # price_service must stay listed before get_quotes_event and get_history_event, or the feature step fails to load (DI order).
   price_service:
     module_path: tiferet_stocks.repos.yahoo
     class_name: YahooChartPriceRepository
@@ -30,6 +30,9 @@ services:
   get_quotes_event:
     module_path: tiferet_stocks.events.quote
     class_name: GetQuotes
+  get_history_event:
+    module_path: tiferet_stocks.events.history
+    class_name: GetHistory
 
 features:
   quotes:
@@ -39,6 +42,16 @@ features:
       steps:
         - service_id: get_quotes_event
           name: Get the quotes
+    history:
+      name: Get History
+      description: Gets the daily bars for one symbol between two ISO dates, inclusive, oldest first
+      params_schema:
+        symbol: str
+        start: str
+        end: str
+      steps:
+        - service_id: get_history_event
+          name: Get the history
   symbols:
     get:
       name: Get Symbol
@@ -71,3 +84,13 @@ errors:
     message:
       - lang: en_US
         text: 'No quotes are available for the requested symbols: {symbols}.'
+  HISTORY_UNAVAILABLE:
+    name: History Unavailable
+    message:
+      - lang: en_US
+        text: 'No price history is available for {symbol}: {reason}.'
+  INVALID_HISTORY_RANGE:
+    name: Invalid History Range
+    message:
+      - lang: en_US
+        text: 'The history range {start} to {end} is invalid: {detail}.'

@@ -25,8 +25,13 @@ from ..domain import (
     QuoteFailure,
     Quote,
     Quotations,
+    PriceBar,
+    PriceHistory,
     SymbolLookup,
     SymbolWarning,
+)
+from .history import (
+    PriceHistoryAggregate,
 )
 from .symbol import (
     SymbolAggregate,
