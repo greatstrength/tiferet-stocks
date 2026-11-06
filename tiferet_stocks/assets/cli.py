@@ -19,6 +19,11 @@ from tiferet_stocks.assets.core import (
     WATCHLISTS_MOVE_FEATURE_ID,
 )
 
+# *** constants (ids_sessions)
+
+# ** constant: stocks_cli_session_id
+STOCKS_CLI_SESSION_ID = 'stocks_cli'
+
 # *** constants (ids_commands)
 
 # ** constant: quotes_get_cli_cmd_id

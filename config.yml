@@ -1,4 +1,7 @@
 sessions:
+  stocks_cli:
+    name: Stocks CLI
+    description: Run reporting and watchlist commands through the core CLI.
   stocks_client:
     name: Stocks Client
     description: Reference client session for tiferet-stocks features.

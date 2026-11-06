@@ -34,3 +34,10 @@ Group 2 adds per-symbol presentation preserving every warning/failure without ch
 ## Symbol presentation
 
 Quotes and lookup answers render as native core tables with one row per encountered symbol id, including ids represented only by warnings or failures. Quote scalars remain scalars; quote_symbol_id and resolved_symbol_id retain provider identity independently of the requested symbol_id. Symbol metadata uses symbol_ prefixes, and quote fetched_at is retained when present. Numbered failure_N_* and warning_N_* columns preserve every field of every record, including repeated reasons, details and attempts; counts make omissions visible. Other responses keep core's native formatting. Presentation never replaces or modifies the library result.
+
+
+## Running the installed CLI
+
+Install the package and provide a configuration containing the reference stocks_cli session and cli.cmds catalog. Run `tiferet-stocks --config /path/to/config.yml exchanges list`, or omit --config to read config.yml in the current working directory. The installed console script does not copy a configuration into the environment or write beside the package. Core config readers all use the selected document; relative provider/watchlist paths retain CWD-relative core semantics. For reliable invocation from any directory, use explicit absolute resource paths in that configuration.
+
+The stocks blueprint composes the released public build_cli_cache, get_app_session, build_app_service_container, build_service_resolver, catalog handlers and compose_session_context factories. It injects the request binder and stock response context, without changing core, shared domain features or private context slots. The real CliSessionContext prints responses, exits 1 for configured domain errors and uses argparse's exit 2 for command syntax errors. Missing/malformed configuration remains an infrastructure fault, not a new catalogued stocks error.

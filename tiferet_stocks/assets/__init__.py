@@ -56,6 +56,7 @@ from .error import (
     DEFAULT_ERRORS,
 )
 from .cli import (
+    STOCKS_CLI_SESSION_ID,
     QUOTES_GET_CLI_CMD_ID,
     QUOTES_HISTORY_CLI_CMD_ID,
     SYMBOLS_GET_CLI_CMD_ID,
