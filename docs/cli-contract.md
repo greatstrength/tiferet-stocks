@@ -29,3 +29,8 @@ Core list arguments use nargs '+' for one or more values. The optional exchange 
 ## Approved later groups
 
 Group 2 adds per-symbol presentation preserving every warning/failure without changing the library's programmatic return values. Group 3 supplies public CLI factory adaptation, CWD config.yml or explicit --config, blueprint/package registration and the console entrypoint. Group 4 adds installed-command, output/error/exit-code and full acceptance evidence. No version/dependency change or expansion to other features is part of this lane.
+
+
+## Symbol presentation
+
+Quotes and lookup answers render as native core tables with one row per encountered symbol id, including ids represented only by warnings or failures. Quote scalars remain scalars; quote_symbol_id and resolved_symbol_id retain provider identity independently of the requested symbol_id. Symbol metadata uses symbol_ prefixes, and quote fetched_at is retained when present. Numbered failure_N_* and warning_N_* columns preserve every field of every record, including repeated reasons, details and attempts; counts make omissions visible. Other responses keep core's native formatting. Presentation never replaces or modifies the library result.
