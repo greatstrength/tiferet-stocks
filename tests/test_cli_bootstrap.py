@@ -1,3 +1,5 @@
+"""Public CLI bootstrap and offline installed-wheel tests."""
+
 # *** imports
 
 # ** core
@@ -19,6 +21,11 @@ from tiferet_stocks.contexts import StocksCliRequestContext
 def cli_config(tmp_path):
     '''
     Supply a real CLI catalog in a directory independent of process CWD.
+
+    :param tmp_path: The isolated temporary data directory.
+    :type tmp_path: Path
+    :return: The configured fixture value or completed response.
+    :rtype: Any
     '''
 
     source = Path(__file__).resolve().parents[1] / 'config.yml'
@@ -31,8 +38,14 @@ def cli_config(tmp_path):
 # *** tests
 
 # ** test: create_cli_request_context
-
 def test_create_cli_request_context_preserves_core_shape():
+    '''
+    Preserve the public CLI request construction contract.
+
+    :return: None; assertions enforce the contract.
+    :rtype: None
+    '''
+
     context = create_cli_request_context('stocks_cli', 'quotes.get', headers={'test': 'value'}, data={'symbols': ['AAPL']})
     assert isinstance(context, StocksCliRequestContext)
     assert context.headers == {'test': 'value', 'interface_id': 'stocks_cli'}
@@ -40,8 +53,22 @@ def test_create_cli_request_context_preserves_core_shape():
     assert context.data == {'symbols': ['AAPL']}
 
 # ** test: explicit_config
-
 def test_explicit_config_drives_all_core_readers(cli_config, tmp_path, monkeypatch, capsys):
+    '''
+    Exercise the configured CLI bootstrap contract.
+
+    :param cli_config: The selected reference configuration path.
+    :type cli_config: Path
+    :param tmp_path: The isolated temporary data directory.
+    :type tmp_path: Path
+    :param monkeypatch: The scoped environment/working-directory adapter.
+    :type monkeypatch: pytest.MonkeyPatch
+    :param capsys: The captured core response streams.
+    :type capsys: pytest.CaptureFixture
+    :return: None; assertions enforce the contract.
+    :rtype: None
+    '''
+
     elsewhere = tmp_path / 'elsewhere'
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -52,16 +79,38 @@ def test_explicit_config_drives_all_core_readers(cli_config, tmp_path, monkeypat
     assert list(elsewhere.iterdir()) == []
 
 # ** test: default_config
-
 def test_main_defaults_to_cwd_config(cli_config, tmp_path, monkeypatch, capsys):
+    '''
+    Exercise the configured CLI bootstrap contract.
+
+    :param cli_config: The selected reference configuration path.
+    :type cli_config: Path
+    :param tmp_path: The isolated temporary data directory.
+    :type tmp_path: Path
+    :param monkeypatch: The scoped environment/working-directory adapter.
+    :type monkeypatch: pytest.MonkeyPatch
+    :param capsys: The captured core response streams.
+    :type capsys: pytest.CaptureFixture
+    :return: None; assertions enforce the contract.
+    :rtype: None
+    '''
+
     (tmp_path / 'config.yml').write_bytes(cli_config.read_bytes())
     monkeypatch.chdir(tmp_path)
     assert main(argv=['exchanges', 'list']) is None
     assert 'NASDAQ' in capsys.readouterr().out
 
 # ** test: installed_wheel
-
 def test_installed_wheel_uses_site_packages_and_released_beta(installed_cli):
+    '''
+    Exercise the configured CLI bootstrap contract.
+
+    :param installed_cli: The offline noneditable installed console environment.
+    :type installed_cli: dict
+    :return: None; assertions enforce the contract.
+    :rtype: None
+    '''
+
     evidence = subprocess.run(
         [str(installed_cli['python']), '-c', 'import importlib.metadata as m; import tiferet_stocks; import tiferet; print(tiferet_stocks.__file__); print(m.version("tiferet")); print(tiferet.__file__)'],
         cwd=installed_cli['root'],
@@ -79,6 +128,21 @@ def test_installed_wheel_uses_site_packages_and_released_beta(installed_cli):
 # ** test: installed_console
 @pytest.mark.parametrize('explicit', [True, False])
 def test_installed_console_outside_checkout(installed_cli, cli_config, tmp_path, explicit):
+    '''
+    Exercise the configured CLI bootstrap contract.
+
+    :param installed_cli: The offline noneditable installed console environment.
+    :type installed_cli: dict
+    :param cli_config: The selected reference configuration path.
+    :type cli_config: Path
+    :param tmp_path: The isolated temporary data directory.
+    :type tmp_path: Path
+    :param explicit: Whether to select configuration through --config.
+    :type explicit: bool
+    :return: None; assertions enforce the contract.
+    :rtype: None
+    '''
+
     cwd = tmp_path / 'outside'
     cwd.mkdir()
     arguments = [str(installed_cli['script'])]

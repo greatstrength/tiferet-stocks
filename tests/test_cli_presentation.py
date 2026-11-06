@@ -17,6 +17,9 @@ from tiferet_stocks.domain import PriceBar, Quote, QuoteFailure, Quotations, Sym
 def test_quote_rows_retain_complete_records() -> None:
     '''
     Keep quote fields, provider identity, metadata and repeated warning/failure details.
+
+    :return: None; assertions enforce the contract.
+    :rtype: None
     '''
 
     result = Quotations(
@@ -50,10 +53,24 @@ def test_quote_rows_retain_complete_records() -> None:
     assert rows[1]['status'] == 'failed'
     assert result.model_dump() == before
 
+    # Exercise the final native renderer as well as the complete intermediate rows.
+    request = StocksCliRequestContext()
+    request.set_result(result)
+    rendered = request.handle_response().format_output()
+    for column in ['failure_2_reason', 'failure_2_detail', 'failure_2_attempts', 'warning_2_reason', 'warning_2_detail']:
+        assert column in rendered
+    for detail in ['first', 'second', 'absent', 'unmapped_exchange', 'unmapped_asset_type', 'PNK', 'OTHER']:
+        assert detail in rendered
+    assert request.result is result
+    assert result.model_dump() == before
+
 # ** test: lookup_rows_include_warning_only_and_failure_only_symbols
 def test_lookup_rows_include_warning_only_and_failure_only_symbols() -> None:
     '''
     Preserve every named result even when no success record exists for that id.
+
+    :return: None; assertions enforce the contract.
+    :rtype: None
     '''
 
     result = SymbolLookup(
@@ -82,6 +99,9 @@ def test_native_symbol_tables_preserve_raw_result(result) -> None:
 
     :param result: A quote or lookup answer.
     :type result: Quotations | SymbolLookup
+
+    :return: None; assertions enforce the contract.
+    :rtype: None
     '''
 
     request = StocksCliRequestContext(feature_id='quotes.get')
@@ -113,6 +133,9 @@ def test_other_outputs_match_native_core(result) -> None:
 
     :param result: A non-symbol-answer feature result.
     :type result: Any
+
+    :return: None; assertions enforce the contract.
+    :rtype: None
     '''
 
     native = CliRequestContext()

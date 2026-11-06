@@ -1,3 +1,5 @@
+"""Offline, isolated installed CLI test environment."""
+
 # *** imports
 
 # ** core
@@ -18,6 +20,11 @@ import pytest
 def installed_cli(tmp_path_factory):
     '''
     Build/install the wheel offline, outside checkout, sharing only test dependencies.
+
+    :param tmp_path_factory: The session temporary-directory factory.
+    :type tmp_path_factory: pytest.TempPathFactory
+    :return: The configured fixture value or completed response.
+    :rtype: Any
     '''
 
     root = Path(__file__).resolve().parents[1]
