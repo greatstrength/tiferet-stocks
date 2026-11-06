@@ -4,6 +4,11 @@ sessions:
     description: Reference client session for tiferet-stocks features.
 
 services:
+  watchlist_service:
+    module_path: tiferet_stocks.repos.watchlist
+    class_name: WatchlistConfigRepository
+    params:
+      watchlist_config: data/watchlists.yml
   symbol_lookup_service:
     module_path: tiferet_stocks.repos.yahoo
     class_name: YahooChartPriceRepository

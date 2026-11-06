@@ -18,7 +18,7 @@ try:
         Quotations,
         Watchlist,
     )
-    from .interfaces import PriceService, SymbolLookupService
+    from .interfaces import PriceService, SymbolLookupService, WatchlistService
 except Exception as e:
     import os, sys
     if not os.getenv('TIFERET_STOCKS_SILENT_IMPORTS'):
