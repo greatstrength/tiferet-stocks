@@ -16,6 +16,7 @@ try:
         QuoteFailure,
         Quote,
         Quotations,
+        Watchlist,
     )
     from .interfaces import PriceService, SymbolLookupService
 except Exception as e:

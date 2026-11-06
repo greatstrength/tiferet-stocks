@@ -36,3 +36,4 @@ from .symbol import (
     SymbolLookup,
 )
 from .quotations import Quotations
+from .watchlist import Watchlist
