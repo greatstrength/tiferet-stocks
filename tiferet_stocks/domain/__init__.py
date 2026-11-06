@@ -14,6 +14,7 @@ from .quote import (
     usable_number,
     QuoteFailure,
     Quote,
+    PriceBar,
 )
 from .symbol import (
     NYSE,
@@ -37,3 +38,4 @@ from .symbol import (
 )
 from .quotations import Quotations
 from .watchlist import Watchlist
+from .history import PriceHistory

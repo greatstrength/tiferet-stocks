@@ -17,6 +17,8 @@ try:
         Quote,
         Quotations,
         Watchlist,
+        PriceBar,
+        PriceHistory,
     )
     from .interfaces import PriceService, SymbolLookupService, WatchlistService
 except Exception as e:
