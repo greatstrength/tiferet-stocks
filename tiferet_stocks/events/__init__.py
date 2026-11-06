@@ -10,3 +10,14 @@ from .symbol import (
     ResolveSymbols,
     ListExchanges,
 )
+from .watchlist import (
+    WatchlistEvent,
+    GetWatchlist,
+    ListWatchlists,
+    CreateWatchlist,
+    UpdateWatchlist,
+    DeleteWatchlist,
+    AddWatchlistSymbol,
+    RemoveWatchlistSymbol,
+    MoveWatchlistSymbol,
+)

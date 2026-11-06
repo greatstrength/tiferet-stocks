@@ -36,7 +36,81 @@ services:
     module_path: tiferet_stocks.events.quote
     class_name: GetQuotes
 
+  get_watchlist_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: GetWatchlist
+  list_watchlists_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: ListWatchlists
+  create_watchlist_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: CreateWatchlist
+  update_watchlist_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: UpdateWatchlist
+  delete_watchlist_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: DeleteWatchlist
+  add_watchlist_symbol_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: AddWatchlistSymbol
+  remove_watchlist_symbol_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: RemoveWatchlistSymbol
+  move_watchlist_symbol_event:
+    module_path: tiferet_stocks.events.watchlist
+    class_name: MoveWatchlistSymbol
+
 features:
+  watchlists:
+    get:
+      name: GetWatchlist
+      description: GetWatchlist through the watchlist service
+      steps:
+        - service_id: get_watchlist_event
+          name: GetWatchlist
+    list:
+      name: ListWatchlists
+      description: ListWatchlists through the watchlist service
+      steps:
+        - service_id: list_watchlists_event
+          name: ListWatchlists
+    create:
+      name: CreateWatchlist
+      description: CreateWatchlist through the watchlist service
+      steps:
+        - service_id: create_watchlist_event
+          name: CreateWatchlist
+    update:
+      name: UpdateWatchlist
+      description: UpdateWatchlist through the watchlist service
+      steps:
+        - service_id: update_watchlist_event
+          name: UpdateWatchlist
+    delete:
+      name: DeleteWatchlist
+      description: DeleteWatchlist through the watchlist service
+      steps:
+        - service_id: delete_watchlist_event
+          name: DeleteWatchlist
+    add:
+      name: AddWatchlistSymbol
+      description: AddWatchlistSymbol through the watchlist service
+      steps:
+        - service_id: add_watchlist_symbol_event
+          name: AddWatchlistSymbol
+    remove:
+      name: RemoveWatchlistSymbol
+      description: RemoveWatchlistSymbol through the watchlist service
+      steps:
+        - service_id: remove_watchlist_symbol_event
+          name: RemoveWatchlistSymbol
+    move:
+      name: MoveWatchlistSymbol
+      description: MoveWatchlistSymbol through the watchlist service
+      steps:
+        - service_id: move_watchlist_symbol_event
+          name: MoveWatchlistSymbol
   quotes:
     get:
       name: Get Quotes
@@ -76,3 +150,28 @@ errors:
     message:
       - lang: en_US
         text: 'No quotes are available for the requested symbols: {symbols}.'
+  WATCHLIST_NOT_FOUND:
+    name: Watchlist Not Found
+    message:
+      - lang: en_US
+        text: 'Watchlist not found: {id}.'
+  WATCHLIST_EXISTS:
+    name: Watchlist Exists
+    message:
+      - lang: en_US
+        text: 'Watchlist already exists: {id}.'
+  WATCHLIST_SYMBOL_EXISTS:
+    name: Watchlist Symbol Exists
+    message:
+      - lang: en_US
+        text: 'Symbol already exists in watchlist {id}: {symbol_id}.'
+  WATCHLIST_SYMBOL_NOT_FOUND:
+    name: Watchlist Symbol Not Found
+    message:
+      - lang: en_US
+        text: 'Symbol not found in watchlist {id}: {symbol_id}.'
+  WATCHLIST_INDEX_OUT_OF_RANGE:
+    name: Watchlist Index Out Of Range
+    message:
+      - lang: en_US
+        text: 'Watchlist index must be -1 or greater: {index}.'
