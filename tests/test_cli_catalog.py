@@ -232,7 +232,7 @@ def test_required_arguments_rejected_by_core(parser, argv: list) -> None:
 
     assert raised.value.code == 2
 
-# ** test_int: all_commands_dispatch_existing_features
+# ** test: all_commands_dispatch_existing_features
 @pytest.mark.parametrize('argv, expected_id', [
     (['quotes', 'get', 'AAPL'], 'quotes.get'),
     (['quotes', 'history', 'AAPL', '--start', '2026-10-19', '--end', '2026-10-23'], 'quotes.history'),
@@ -291,7 +291,7 @@ def test_all_commands_dispatch_existing_features(dispatch_context, argv: list, e
     else:
         assert result.id == 'etfs'
 
-# ** test_int: invalid_index_dispatch_preserves_bytes
+# ** test: invalid_index_dispatch_preserves_bytes
 @pytest.mark.parametrize('operation, flag, symbol', [('add', '--index', 'XLK'), ('move', '--to-index', 'SPY')])
 def test_invalid_index_dispatch_preserves_bytes(dispatch_context,
                                                 operation: str,

@@ -132,7 +132,7 @@ def console(installed_cli, tmp_path):
 
 # *** tests
 
-# ** test_int: all_thirteen_installed_commands
+# ** test: all_thirteen_installed_commands
 @pytest.mark.parametrize('argv, expected', [
     (['quotes', 'get', 'SPY', 'QQQ'], 'not_found'),
     (['quotes', 'history', 'SPY', '--start', '2026-10-19', '--end', '2026-10-23'], '2026-10-19'),
@@ -166,7 +166,7 @@ def test_all_thirteen_installed_commands(console, argv, expected):
     assert_success(result)
     assert expected in result.stdout
 
-# ** test_int: quotes_complete_rows
+# ** test: quotes_complete_rows
 def test_quotes_have_one_row_per_symbol_and_all_failure_fields(console):
     '''
     Report both a successful static quote and a missing quote by id/reason.
@@ -190,7 +190,7 @@ def test_quotes_have_one_row_per_symbol_and_all_failure_fields(console):
     assert 'failure_count' in lines[0]
     assert 'warning_count' in lines[0]
 
-# ** test_int: history_order_and_empty
+# ** test: history_order_and_empty
 def test_history_oldest_first_and_empty_trading_range(console):
     '''
     Keep native history rendering while retaining sorted bars and empty success.
@@ -210,7 +210,7 @@ def test_history_oldest_first_and_empty_trading_range(console):
     assert_success(result)
     assert all(not line.strip() or 'Executed Feature - quotes.history' in line for line in result.stdout.splitlines())
 
-# ** test_int: symbol_reports_preserve_messages
+# ** test: symbol_reports_preserve_messages
 @pytest.mark.parametrize('argv, required', [
     (['symbols', 'get', 'SPY'], ['SPY', 'unmapped_exchange']),
     (['symbols', 'get', 'MISSING'], ['MISSING', 'not_found', 'Recorded symbol missing.']),
@@ -236,7 +236,7 @@ def test_symbol_reports_preserve_messages(console, argv, required):
     for text in required:
         assert text in result.stdout
 
-# ** test_int: exact_exchanges
+# ** test: exact_exchanges
 def test_exchanges_print_exact_domain_ids(console):
     '''
     Compare the native table's complete data rows with the domain vocabulary.
@@ -253,7 +253,7 @@ def test_exchanges_print_exact_domain_ids(console):
     start = next(index for index, line in enumerate(lines) if line.strip() == 'value')
     assert [line.strip() for line in lines[start + 2:]] == list(EXCHANGES)
 
-# ** test_int: cli_indexes
+# ** test: cli_indexes
 @pytest.mark.parametrize('operation, flag, symbol', [('add', '--index', 'DIA'), ('move', '--to-index', 'SPY')])
 @pytest.mark.parametrize('index', [None, '-1', '0', '99', '-2'])
 def test_cli_indexes_and_rejected_write_invariance(console, operation, flag, symbol, index):
@@ -291,7 +291,7 @@ def test_cli_indexes_and_rejected_write_invariance(console, operation, flag, sym
         assert read_ids(console) == expected
         assert yaml.safe_load(console['storage'].read_text())['other'] == {'keep': True}
 
-# ** test_int: configured_error_parity
+# ** test: configured_error_parity
 @pytest.mark.parametrize('argv, error_id', [
     (['quotes', 'get', 'MISSING'], 'QUOTES_UNAVAILABLE'),
     (['quotes', 'history', 'MISSING', '--start', '2026-10-19', '--end', '2026-10-23'], 'HISTORY_UNAVAILABLE'),
@@ -322,7 +322,7 @@ def test_configured_errors_exit_one_and_never_write(console, argv, error_id):
     assert_error(result, error_id)
     assert console['storage'].read_bytes() == before
 
-# ** test_int: parser_error_exit_two
+# ** test: parser_error_exit_two
 @pytest.mark.parametrize('argv', [[], ['unknown'], ['quotes', 'history', 'SPY'], ['watchlists', 'add', 'etfs', 'DIA', '--index', 'bad']])
 def test_parser_errors_exit_two_and_never_write(console, argv):
     '''
@@ -342,7 +342,7 @@ def test_parser_errors_exit_two_and_never_write(console, argv):
     assert 'Traceback' not in result.stdout + result.stderr
     assert console['storage'].read_bytes() == before
 
-# ** test_int: reporting_is_read_only
+# ** test: reporting_is_read_only
 def test_all_reporting_commands_leave_files_byte_identical(console):
     '''
     Snapshot mutable storage, configuration and fixtures across all reports.
@@ -370,7 +370,7 @@ def test_all_reporting_commands_leave_files_byte_identical(console):
         assert {path: path.read_bytes() for path in paths} == before
         assert {path.relative_to(console['cwd']): path.read_bytes() for path in console['cwd'].rglob('*') if path.is_file()} == before_tree
 
-# ** test_int: first_save_missing_file
+# ** test: first_save_missing_file
 def test_cli_missing_file_reads_then_first_save(console):
     '''
     Preserve the Chief's first-run rule through installed feature dispatch.
@@ -389,7 +389,7 @@ def test_cli_missing_file_reads_then_first_save(console):
     assert_success(console['run']('watchlists', 'create', 'first', '--name', 'First'))
     assert yaml.safe_load(console['storage'].read_text())['watchlists']['first']['symbol_ids'] == []
 
-# ** test_int: offline_guard_is_live
+# ** test: offline_guard_is_live
 def test_subprocess_network_guard_blocks_before_dns(console):
     '''
     Positively verify the guard used by every installed acceptance command.
