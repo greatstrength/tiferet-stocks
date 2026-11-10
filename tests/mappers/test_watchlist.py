@@ -5,10 +5,33 @@
 # ** infra
 import pytest
 from pydantic import ValidationError
+from tiferet import use_tester
 from tiferet.domain import ModelError
 
 # ** app
 from tiferet_stocks.mappers import WatchlistAggregate, WatchlistConfigObject
+
+# *** constants
+
+# ** constant: watchlist_sample
+WATCHLIST_SAMPLE = {
+    'id': 'etfs',
+    'name': 'Broad ETFs',
+    'description': 'Ordered holdings',
+    'created_at': '2026-11-06T14:00:00-07:00',
+    'updated_at': '2026-11-06T14:30:00-07:00',
+    'symbol_ids': ['SPY', 'QQQ', 'XLK'],
+}
+
+# ** constant: watchlist_fields
+WATCHLIST_FIELDS = [
+    'id',
+    'name',
+    'description',
+    'created_at',
+    'updated_at',
+    'symbol_ids',
+]
 
 # *** tests
 
@@ -259,3 +282,106 @@ def test_config_round_trip() -> None:
     assert restored == watchlist
     assert restored.symbol_ids is not watchlist.symbol_ids
     assert WatchlistConfigObject(id='etfs', **data).map(name='Override').name == 'Override'
+
+# *** testers
+
+# ** tester: test_watchlist_aggregate
+@use_tester(
+    type='aggregate',
+    target_cls=WatchlistAggregate,
+    sample_data=WATCHLIST_SAMPLE,
+    equality_fields=WATCHLIST_FIELDS,
+    set_attribute_params=[
+        ('name', 'Renamed', None),
+        ('description', 'Updated description', None),
+        ('description', None, None),
+        ('id', 'other', 'ATTRIBUTE_NOT_SETTABLE'),
+        ('symbol_ids', ['DIA'], 'ATTRIBUTE_NOT_SETTABLE'),
+        ('created_at', '2026-11-06T15:00:00-07:00', 'ATTRIBUTE_NOT_SETTABLE'),
+        ('updated_at', '2026-11-06T15:00:00-07:00', 'ATTRIBUTE_NOT_SETTABLE'),
+    ],
+)
+class TestWatchlistAggregate:
+    '''
+    Bind aggregate construction and the complete setter boundary to core.
+    '''
+
+    # * test: new
+    def test_new(self, test_ctx, session):
+        '''
+        Construct a populated aggregate through the bound tester.
+
+        :param test_ctx: The bound aggregate assertion context.
+        :type test_ctx: AggregateTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # Compare all six fields, including ordering and distinct audit timestamps.
+        test_ctx.assert_new()
+
+    # * test: set_attribute
+    def test_set_attribute(self, test_ctx, session):
+        '''
+        Exercise permitted labels and all dedicated fields through core assertions.
+
+        :param test_ctx: The bound aggregate assertion context.
+        :type test_ctx: AggregateTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # Every declared mutation uses a fresh target rather than accumulating state.
+        test_ctx.assert_set_attribute()
+
+# ** tester: test_watchlist_config_object
+@use_tester(
+    type='transfer_object',
+    target_cls=WatchlistConfigObject,
+    sample_data=WATCHLIST_SAMPLE,
+    aggregate_module_path='tiferet_stocks.mappers.watchlist',
+    aggregate_class_name='WatchlistAggregate',
+    aggregate_sample_data=WATCHLIST_SAMPLE,
+    equality_fields=WATCHLIST_FIELDS,
+)
+class TestWatchlistConfigObject:
+    '''
+    Bind transfer mapping and aggregate conversion to the released tester.
+    '''
+
+    # * test: map
+    def test_map(self, test_ctx, session):
+        '''
+        Map all populated fields into the declared aggregate type.
+
+        :param test_ctx: The bound transfer-object assertion context.
+        :type test_ctx: TransferObjectTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # Core verifies the aggregate type and each declared equality field.
+        test_ctx.assert_map()
+
+    # * test: round_trip
+    def test_round_trip(self, test_ctx, session):
+        '''
+        Construct the transfer object from its aggregate and map back without loss.
+
+        :param test_ctx: The bound transfer-object assertion context.
+        :type test_ctx: TransferObjectTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # Exercise both public conversion assertions with nonempty sample data.
+        test_ctx.assert_from_model()
+        test_ctx.assert_round_trip()

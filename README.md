@@ -13,7 +13,6 @@ The reference `stocks_client` session exposes `watchlists.get`, `watchlists.list
 
 Every successful change except delete stamps `updated_at`, setting `created_at` only on creation. An explicit offset-bearing ISO `at` overrides the event clock. Reads never stamp. Duplicate ids, absent watchlists/symbols and invalid negative positions are checked before aggregate mutation and resolve through the configured watchlist error catalog. Adding a ticker does not look it up. Changes work on private aggregates so rejected requests do not mutate service-held objects.
 
-
 ## Command line
 
 After `pip install .`, run `tiferet-stocks exchanges list` with the reference config.yml in the current directory, or use `tiferet-stocks --config /path/to/config.yml exchanges list`. The package installs the console script and code, not a writable configuration or data directory. Provider and watchlist paths are CWD-relative unless absolute paths are configured. The reference provider is Yahoo; the acceptance suite substitutes static prices/history and recorded lookup responses without network access.

@@ -9,7 +9,7 @@ from unittest import mock
 # ** infra
 import pytest
 from pydantic import ValidationError
-from tiferet import TiferetError
+from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
@@ -26,6 +26,16 @@ from tiferet_stocks.events import (
 )
 from tiferet_stocks.interfaces import WatchlistService
 from tiferet_stocks.mappers import WatchlistAggregate
+
+# *** constants
+
+# ** constant: watchlist_dependencies
+WATCHLIST_DEPENDENCIES = {
+    'watchlist_service': {
+        'module_path': 'tiferet_stocks.interfaces',
+        'class_name': 'WatchlistService',
+    },
+}
 
 # *** fixtures
 
@@ -232,3 +242,250 @@ def test_default_clock_has_offset(service: mock.Mock) -> None:
     timestamp = WatchlistEvent(service).now()
 
     assert datetime.fromisoformat(timestamp).utcoffset() is not None
+
+# *** testers
+
+# ** tester: test_get_watchlist
+@use_tester(
+    type='domain_event',
+    target_cls=GetWatchlist,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'one'},
+    required_params=['id'],
+)
+class TestGetWatchlist:
+    '''
+    Bind GetWatchlist to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_list_watchlists
+@use_tester(
+    type='domain_event',
+    target_cls=ListWatchlists,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={},
+    required_params=[],
+)
+class TestListWatchlists:
+    '''
+    Bind ListWatchlists to the released event tester and service contract.
+    '''
+
+    # * test: list_with_injected_service
+    def test_list_with_injected_service(self, test_ctx, session):
+        '''
+        Execute the parameter-free event with the tester's real spec dependency.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # Build the declared service spec and supply an ordered, populated answer.
+        dependencies = test_ctx.mock_dependencies()
+        service = dependencies['watchlist_service']
+        watchlist = WatchlistAggregate(id='one', name='One', symbol_ids=['SPY', 'QQQ'])
+        service.list.return_value = [watchlist]
+
+        # Exercise handle rather than the empty required-parameter assertion.
+        result = test_ctx.handle(dependencies=dependencies)
+
+        # Lock actual delegation and read-only behavior of the injected service.
+        assert result == [watchlist]
+        service.list.assert_called_once_with()
+        service.get.assert_not_called()
+        service.save.assert_not_called()
+        service.delete.assert_not_called()
+
+# ** tester: test_create_watchlist
+@use_tester(
+    type='domain_event',
+    target_cls=CreateWatchlist,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'new', 'name': 'New', 'symbol_ids': ['SPY', 'QQQ']},
+    required_params=['id', 'name'],
+)
+class TestCreateWatchlist:
+    '''
+    Bind CreateWatchlist to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_update_watchlist
+@use_tester(
+    type='domain_event',
+    target_cls=UpdateWatchlist,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'one', 'name': 'Renamed'},
+    required_params=['id'],
+)
+class TestUpdateWatchlist:
+    '''
+    Bind UpdateWatchlist to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_delete_watchlist
+@use_tester(
+    type='domain_event',
+    target_cls=DeleteWatchlist,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'one'},
+    required_params=['id'],
+)
+class TestDeleteWatchlist:
+    '''
+    Bind DeleteWatchlist to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_add_watchlist_symbol
+@use_tester(
+    type='domain_event',
+    target_cls=AddWatchlistSymbol,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'one', 'symbol_id': 'XLK'},
+    required_params=['id', 'symbol_id'],
+)
+class TestAddWatchlistSymbol:
+    '''
+    Bind AddWatchlistSymbol to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_remove_watchlist_symbol
+@use_tester(
+    type='domain_event',
+    target_cls=RemoveWatchlistSymbol,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'one', 'symbol_id': 'SPY'},
+    required_params=['id', 'symbol_id'],
+)
+class TestRemoveWatchlistSymbol:
+    '''
+    Bind RemoveWatchlistSymbol to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
+
+# ** tester: test_move_watchlist_symbol
+@use_tester(
+    type='domain_event',
+    target_cls=MoveWatchlistSymbol,
+    dependencies=WATCHLIST_DEPENDENCIES,
+    sample_kwargs={'id': 'one', 'symbol_id': 'SPY'},
+    required_params=['id', 'symbol_id'],
+)
+class TestMoveWatchlistSymbol:
+    '''
+    Bind MoveWatchlistSymbol to the released event tester and service contract.
+    '''
+
+    # * test: missing_required_params
+    def test_missing_required_params(self, test_ctx, session):
+        '''
+        Require each declared input before an event may reach the repository.
+
+        :param test_ctx: The bound event assertion context.
+        :type test_ctx: DomainEventTesterContext
+        :param session: The released test session.
+        :type session: TestSessionContext
+        :return: None.
+        :rtype: None
+        '''
+
+        # The nonempty contract exercises every required parameter through handle.
+        test_ctx.assert_missing_required_params()
