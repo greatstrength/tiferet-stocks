@@ -37,3 +37,4 @@ from .symbol import (
     SymbolAggregate,
     SymbolYahooObject,
 )
+from .watchlist import WatchlistAggregate, WatchlistConfigObject
