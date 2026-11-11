@@ -16,6 +16,9 @@ dependencies = [
     "tiferet>=2.2,<2.3",
 ]
 
+[project.scripts]
+tiferet-stocks = "tiferet_stocks.blueprints.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/greatstrength/tiferet-stocks"
 Repository = "https://github.com/greatstrength/tiferet-stocks"
@@ -32,6 +35,8 @@ version = { attr = "tiferet_stocks.__version__" }
 packages = [
     "tiferet_stocks",
     "tiferet_stocks.assets",
+    "tiferet_stocks.blueprints",
+    "tiferet_stocks.contexts",
     "tiferet_stocks.domain",
     "tiferet_stocks.events",
     "tiferet_stocks.interfaces",

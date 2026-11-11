@@ -1,4 +1,7 @@
 sessions:
+  stocks_cli:
+    name: Stocks CLI
+    description: Run reporting and watchlist commands through the core CLI.
   stocks_client:
     name: Stocks Client
     description: Reference client session for tiferet-stocks features.
@@ -198,3 +201,191 @@ errors:
     message:
       - lang: en_US
         text: 'The history range {start} to {end} is invalid: {detail}.'
+
+cli:
+  cmds:
+    quotes:
+      get:
+        group_key: quotes
+        key: get
+        name: Quotes Get
+        description: Run the quotes.get feature.
+        args:
+          - name_or_flags:
+              - symbols
+            description: One or more symbol tickers.
+            type: list
+            nargs: '+'
+      history:
+        group_key: quotes
+        key: history
+        name: Quotes History
+        description: Run the quotes.history feature.
+        args:
+          - name_or_flags:
+              - symbol
+            description: The symbol ticker.
+            type: str
+          - name_or_flags:
+              - --start
+            description: The first inclusive ISO date.
+            type: str
+            required: true
+          - name_or_flags:
+              - --end
+            description: The last inclusive ISO date.
+            type: str
+            required: true
+    symbols:
+      get:
+        group_key: symbols
+        key: get
+        name: Symbols Get
+        description: Run the symbols.get feature.
+        args:
+          - name_or_flags:
+              - symbol
+            description: The symbol ticker.
+            type: str
+      resolve:
+        group_key: symbols
+        key: resolve
+        name: Symbols Resolve
+        description: Run the symbols.resolve feature.
+        args:
+          - name_or_flags:
+              - symbols
+            description: One or more symbol tickers.
+            type: list
+            nargs: '+'
+          - name_or_flags:
+              - --expected-exchanges
+            description: Expected exchanges as SYM=EXCHANGE tokens.
+            type: dict
+            nargs: '+'
+    exchanges:
+      list:
+        group_key: exchanges
+        key: list
+        name: Exchanges List
+        description: Run the exchanges.list feature.
+    watchlists:
+      list:
+        group_key: watchlists
+        key: list
+        name: Watchlists List
+        description: Run the watchlists.list feature.
+      get:
+        group_key: watchlists
+        key: get
+        name: Watchlists Get
+        description: Run the watchlists.get feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The watchlist id.
+            type: str
+      create:
+        group_key: watchlists
+        key: create
+        name: Watchlists Create
+        description: Run the watchlists.create feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The new watchlist id.
+            type: str
+          - name_or_flags:
+              - --name
+            description: The display name.
+            type: str
+            required: true
+          - name_or_flags:
+              - --description
+            description: The optional description.
+            type: str
+          - name_or_flags:
+              - --symbol-ids
+            description: The initial ordered tickers.
+            type: list
+            nargs: '+'
+      update:
+        group_key: watchlists
+        key: update
+        name: Watchlists Update
+        description: Run the watchlists.update feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The existing watchlist id.
+            type: str
+          - name_or_flags:
+              - --name
+            description: The new display name.
+            type: str
+          - name_or_flags:
+              - --description
+            description: The new description.
+            type: str
+      delete:
+        group_key: watchlists
+        key: delete
+        name: Watchlists Delete
+        description: Run the watchlists.delete feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The watchlist id.
+            type: str
+      add:
+        group_key: watchlists
+        key: add
+        name: Watchlists Add
+        description: Run the watchlists.add feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The watchlist id.
+            type: str
+          - name_or_flags:
+              - symbol_id
+            description: The ticker to add.
+            type: str
+          - name_or_flags:
+              - --index
+            description: The zero-based insertion position or -1 for the end.
+            type: int
+            default: '-1'
+      remove:
+        group_key: watchlists
+        key: remove
+        name: Watchlists Remove
+        description: Run the watchlists.remove feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The watchlist id.
+            type: str
+          - name_or_flags:
+              - symbol_id
+            description: The ticker to remove.
+            type: str
+      move:
+        group_key: watchlists
+        key: move
+        name: Watchlists Move
+        description: Run the watchlists.move feature.
+        args:
+          - name_or_flags:
+              - id
+            description: The watchlist id.
+            type: str
+          - name_or_flags:
+              - symbol_id
+            description: The ticker to move.
+            type: str
+          - name_or_flags:
+              - --to-index
+            description: The final zero-based position or -1 for the end.
+            type: int
+            default: '-1'
