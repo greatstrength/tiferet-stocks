@@ -75,7 +75,9 @@ class Watchlist(DomainObject):
             return value
 
         # Parse only for validation; preserve the caller's offset and spelling.
-        timestamp = datetime.fromisoformat(value)
+        # Python 3.10 rejects a trailing Z, so map it to +00:00 for the check only.
+        check_value = value[:-1] + '+00:00' if value.endswith('Z') else value
+        timestamp = datetime.fromisoformat(check_value)
         if timestamp.utcoffset() is None:
             raise ValueError('Watchlist timestamps must include a UTC offset.')
 

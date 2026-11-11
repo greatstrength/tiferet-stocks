@@ -3,6 +3,7 @@
 # *** imports
 
 # ** core
+from importlib import metadata
 from pathlib import Path
 import subprocess
 
@@ -111,8 +112,13 @@ def test_installed_wheel_uses_site_packages_and_released_beta(installed_cli):
     :rtype: None
     '''
 
+    # Read host pytest-env versions independently of the sandbox subprocess.
+    expected_tiferet = metadata.version('tiferet')
+    expected_stocks = metadata.version('tiferet-stocks')
+    checkout = str(Path(__file__).resolve().parents[1])
+
     evidence = subprocess.run(
-        [str(installed_cli['python']), '-c', 'import importlib.metadata as m; import tiferet_stocks; import tiferet; print(tiferet_stocks.__file__); print(m.version("tiferet")); print(tiferet.__file__)'],
+        [str(installed_cli['python']), '-c', 'import importlib.metadata as m; import tiferet_stocks; import tiferet; print(tiferet_stocks.__file__); print(m.version("tiferet")); print(tiferet.__file__); print(m.version("tiferet-stocks"))'],
         cwd=installed_cli['root'],
         env=installed_cli['env'],
         capture_output=True,
@@ -121,9 +127,14 @@ def test_installed_wheel_uses_site_packages_and_released_beta(installed_cli):
     )
     assert evidence.returncode == 0, evidence.stderr
     lines = evidence.stdout.splitlines()
+
+    # Forced wheel install must originate in the sandbox, share host tiferet, and match host versions.
     assert str(installed_cli['site']) in lines[0]
-    assert lines[1] == '2.2.2b1'
+    assert checkout not in lines[0]
+    assert lines[1] == expected_tiferet
     assert 'site-packages/tiferet/' in lines[2]
+    assert lines[3] == expected_stocks
+    assert installed_cli['script'].is_file()
 
 # ** test: installed_console
 @pytest.mark.parametrize('explicit', [True, False])

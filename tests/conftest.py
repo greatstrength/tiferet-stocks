@@ -50,8 +50,10 @@ def installed_cli(tmp_path_factory):
     site_packages = next((environment / 'lib').glob('python*/site-packages'))
     (site_packages / 'released-test-dependencies.pth').write_text(sysconfig.get_path('purelib') + '\n')
     wheel = next(wheels.glob('tiferet_stocks-*.whl'))
+
+    # Force-reinstall so a parent that already holds the same noneditable version still writes sandbox files.
     installed = subprocess.run(
-        [str(python), '-m', 'pip', 'install', '--no-deps', '--no-index', str(wheel)],
+        [str(python), '-m', 'pip', 'install', '--force-reinstall', '--no-deps', '--no-index', str(wheel)],
         cwd=sandbox,
         env=env,
         capture_output=True,
@@ -59,4 +61,11 @@ def installed_cli(tmp_path_factory):
         timeout=60,
     )
     assert installed.returncode == 0, installed.stdout + installed.stderr
-    return {'python': python, 'script': environment / 'bin' / 'tiferet-stocks', 'env': env, 'root': sandbox, 'site': site_packages}
+
+    # Fail fast if pip skipped the wheel and left no console script file.
+    script = environment / 'bin' / 'tiferet-stocks'
+    assert script.is_file(), (
+        f'Installed console script missing at {script}. '
+        f'pip stdout:\n{installed.stdout}\npip stderr:\n{installed.stderr}'
+    )
+    return {'python': python, 'script': script, 'env': env, 'root': sandbox, 'site': site_packages}
