@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from tiferet.interfaces import ServiceError
 
 # ** app
+from tiferet_stocks import assets as a
 from tiferet_stocks.interfaces import SymbolAliasService, SymbolLookupService
 from tiferet_stocks.repos.symbol import SymbolAliasRepository, YahooChartSymbolRepository
 from tiferet_stocks.repos.yahoo import YahooChartClient, YahooChartPriceRepository
@@ -158,6 +159,27 @@ def test_alias_repo_returns_configured_aliases_only(tmp_path: Path) -> None:
     path.write_text(json.dumps({'aliases': [{'provider': 'yahoo_chart', 'provider_ticker': 'BRKB.X', 'canonical_id': 'BRK.B'}]}))
 
     assert {ticker: alias.canonical_id for ticker, alias in SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart').items()} == {'BRKB.X': 'BRK.B'}
+
+# ** test: alias_repo_default_path
+def test_alias_repo_defaults_to_asset_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    '''
+    Test that with no path given the repository reads the packaged default path asset, data/symbols.yml, relative to the working directory.
+
+    :param tmp_path: The temporary directory.
+    :type tmp_path: Path
+    :param monkeypatch: The pytest monkeypatch fixture.
+    :type monkeypatch: pytest.MonkeyPatch
+    '''
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'symbols.yml').write_text(json.dumps({'aliases': [{'provider': 'yahoo_chart', 'provider_ticker': 'BRKB.X', 'canonical_id': 'BRK.B'}]}))
+
+    repo = SymbolAliasRepository()
+
+    assert a.symbol.DEFAULT_SYMBOL_CONFIG_FILE == 'data/symbols.yml'
+    assert repo.config_file == a.symbol.DEFAULT_SYMBOL_CONFIG_FILE
+    assert list(repo.get_aliases('yahoo_chart')) == ['BRKB.X']
 
 # ** test: alias_repo_empty_documents
 @pytest.mark.parametrize('content', ['', 'other: {}\n', 'aliases:\n', 'aliases: []\n'])

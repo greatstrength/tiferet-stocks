@@ -281,7 +281,6 @@ def test_symbol_services_wired_independently() -> None:
     assert services[a.SYMBOL_ALIAS_SERVICE_ID] == {
         'module_path': 'tiferet_stocks.repos.symbol',
         'class_name': 'SymbolAliasRepository',
-        'params': {'symbol_config': 'data/symbols.yml'},
     }
     assert services[a.SYMBOL_LOOKUP_SERVICE_ID]['class_name'] == 'YahooChartSymbolRepository'
     assert services[a.PRICE_SERVICE_ID]['class_name'] == 'YahooChartPriceRepository'

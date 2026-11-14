@@ -16,8 +16,6 @@ services:
   symbol_alias_service:
     module_path: tiferet_stocks.repos.symbol
     class_name: SymbolAliasRepository
-    params:
-      symbol_config: data/symbols.yml
   symbol_lookup_service:
     module_path: tiferet_stocks.repos.symbol
     class_name: YahooChartSymbolRepository

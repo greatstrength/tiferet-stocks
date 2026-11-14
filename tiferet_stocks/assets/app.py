@@ -69,9 +69,6 @@ WATCHLIST_SERVICE_DATA = create_app_service_dependency_data(
 SYMBOL_ALIAS_SERVICE_DATA = create_app_service_dependency_data(
     'tiferet_stocks.repos.symbol',
     'SymbolAliasRepository',
-    parameters={
-        'symbol_config': 'data/symbols.yml',
-    },
 )
 
 # ** constant: symbol_lookup_service_data

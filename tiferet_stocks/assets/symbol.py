@@ -1,7 +1,9 @@
 """Tiferet Stocks Assets Symbol
 
-Default symbol aliases that come out of the box, reconciled by the symbol
-alias events with the configured aliases, which take precedence.
+The default symbols file path, which the symbol alias repository reads unless
+a client application passes another, and the default symbol aliases that come
+out of the box, reconciled by the symbol alias events with the configured
+aliases, which take precedence.
 """
 
 # *** imports
@@ -11,6 +13,11 @@ from typing import Any, Dict
 
 # ** app
 from .core import create_default_symbol_alias_data
+
+# *** constants
+
+# ** constant: default_symbol_config_file
+DEFAULT_SYMBOL_CONFIG_FILE = 'data/symbols.yml'
 
 # *** constants (ids_yahoo)
 

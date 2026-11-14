@@ -197,7 +197,7 @@ def test_alias_artifact_wired_independently(tmp_path, monkeypatch) -> None:
     config = yaml.safe_load((ROOT_PATH / 'config.yml').read_text())
     reference = yaml.safe_load((ROOT_PATH / 'config.yml').read_text())
     (tmp_path / 'aliases.yml').write_text(yaml.safe_dump({'aliases': [{'provider': 'yahoo_chart', 'provider_ticker': 'AAPL', 'canonical_id': 'APPLE'}]}))
-    config['services'][a.SYMBOL_ALIAS_SERVICE_ID]['params']['symbol_config'] = str(tmp_path / 'aliases.yml')
+    config['services'][a.SYMBOL_ALIAS_SERVICE_ID]['params'] = {'symbol_config': str(tmp_path / 'aliases.yml')}
     (tmp_path / 'config.yml').write_text(yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(tmp_path)
 

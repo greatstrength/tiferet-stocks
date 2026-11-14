@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from tiferet.repos.core import ConfigurationRepository
 
 # ** app
+from .. import assets as a
 from ..interfaces import SymbolAliasService, SymbolLookupService
 from ..mappers import SymbolAlias, SymbolLookup
 from .yahoo import YahooChartClient
@@ -24,11 +25,11 @@ class SymbolAliasRepository(SymbolAliasService, ConfigurationRepository):
     '''
 
     # * init
-    def __init__(self, symbol_config: str, encoding: str = 'utf-8') -> None:
+    def __init__(self, symbol_config: str = a.symbol.DEFAULT_SYMBOL_CONFIG_FILE, encoding: str = 'utf-8') -> None:
         '''
         Select the symbols file and its encoding.
 
-        :param symbol_config: The YAML or JSON configuration path.
+        :param symbol_config: The YAML or JSON configuration path; defaults to the packaged default path, data/symbols.yml, which a client application may override.
         :type symbol_config: str
         :param encoding: The file encoding.
         :type encoding: str
