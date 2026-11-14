@@ -20,7 +20,9 @@ from ..domain import (
     SymbolAlias,
     SymbolLookup,
     merge_symbol_aliases,
+    rekey_map,
     rekey_symbol_ids,
+    to_canonical_id,
     to_provider_tickers,
 )
 from ..interfaces import SymbolAliasService, SymbolLookupService
@@ -136,14 +138,17 @@ class SymbolLookupEvent(SymbolAliasEvent):
         :rtype: SymbolLookup
         '''
 
-        # Collect the distinct requested ids; a single id string is one id.
+        # Read the aliases first; a single id string is one id.
+        aliases = self.get_aliases(YAHOO_CHART)
         if isinstance(ids, str):
             ids = [ids]
-        requested = list(dict.fromkeys(ids))
-        exchanges = exchanges or {}
 
-        # Read the aliases first, then look up the provider tickers; an id with no alias passes through.
-        aliases = self.get_aliases(YAHOO_CHART)
+        # Collect the distinct canonical ids requested; output reports canonical library ids only, so a provider ticker
+        # requested beside its canonical id falls away.
+        requested = list(dict.fromkeys(to_canonical_id(symbol_id, aliases) for symbol_id in ids))
+        exchanges = rekey_map(exchanges or {}, aliases)
+
+        # Look up the provider tickers; an id with no alias passes through.
         provider_ids = dict(zip(requested, to_provider_tickers(requested, aliases)))
         lookup = self.symbol_lookup_service.lookup(list(dict.fromkeys(provider_ids.values())))
 
@@ -152,7 +157,7 @@ class SymbolLookupEvent(SymbolAliasEvent):
         failures = [failure for failure in rekey_symbol_ids(lookup.failures, aliases) if failure.symbol_id in requested]
         failed_ids = {failure.symbol_id for failure in failures}
 
-        # Check each requested id; nothing requested is silently dropped.
+        # Check each requested canonical id; none is silently dropped.
         symbols = {}
         for symbol_id in requested:
             symbol = lookup.symbols.get(provider_ids[symbol_id])
@@ -220,10 +225,11 @@ class GetSymbol(SymbolLookupEvent):
         # Resolve the single id with its expected exchange.
         lookup = self.resolve([id], exchanges={id: exchange} if exchange else None)
 
-        # Raise the catalogued error when the provider has no such ticker after the alias and lookup steps.
-        failure = next((failure for failure in lookup.failures if failure.symbol_id == id), None)
+        # Raise the catalogued error when the provider has no such ticker after the alias and lookup steps; the one
+        # requested id may answer under its canonical id.
+        failure = next(iter(lookup.failures), None)
         self.verify(
-            id in lookup.symbols or failure is None or failure.reason != NOT_FOUND,
+            bool(lookup.symbols) or failure is None or failure.reason != NOT_FOUND,
             a.SYMBOL_NOT_FOUND_ID,
             id=id,
             failure=failure.model_dump() if failure else None,

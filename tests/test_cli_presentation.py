@@ -88,10 +88,10 @@ def test_lookup_rows_include_warning_only_and_failure_only_symbols() -> None:
     assert rows[2]['warning_1_reason'] == 'unmapped_exchange'
     assert rows[2]['warning_1_detail'] == 'PNK'
 
-# ** test: lookup_rows_show_alias_as_scalar_column
-def test_lookup_rows_show_alias_as_scalar_column() -> None:
+# ** test: lookup_rows_omit_aliases
+def test_lookup_rows_omit_aliases() -> None:
     '''
-    Show an applied alias as one scalar provider-ticker column per provider, not a nested list cell.
+    Render no alias column and no nested aliases cell for a symbol with an applied alias; rows carry canonical ids only.
 
     :return: None; assertions enforce the contract.
     :rtype: None
@@ -103,8 +103,9 @@ def test_lookup_rows_show_alias_as_scalar_column() -> None:
 
     assert rows[0]['symbol_id'] == 'BRK.B'
     assert rows[0]['resolved_symbol_id'] == 'BRK.B'
-    assert rows[0]['symbol_alias_yahoo_chart'] == 'BRK-B'
+    assert 'symbol_alias_yahoo_chart' not in rows[0]
     assert 'symbol_aliases' not in rows[0]
+    assert not any(key.startswith('symbol_alias') for key in rows[0])
 
 # ** test: native_symbol_tables_preserve_raw_result
 @pytest.mark.parametrize('result', [

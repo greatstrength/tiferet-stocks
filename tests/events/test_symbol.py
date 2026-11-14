@@ -470,6 +470,60 @@ def test_resolve_symbols_raw_default_ticker_passes_through_when_configured_elsew
     assert lookup.symbols['BRK-B'].id == 'BRK-B'
     assert lookup.failures == []
 
+# ** test: get_symbol_raw_default_ticker
+def test_get_symbol_raw_default_ticker_answers_canonical(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that with nothing configured a raw BRK-B request answers as the canonical BRK.B with no failure.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BRK-B': Symbol(id='BRK-B', exchange='NYSE')})
+
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='BRK-B')
+
+    symbol_lookup_service.lookup.assert_called_once_with(['BRK-B'])
+    assert list(lookup.symbols) == ['BRK.B']
+    assert lookup.symbols['BRK.B'].id == 'BRK.B'
+    assert lookup.failures == []
+
+# ** test: get_symbol_raw_default_ticker_not_found
+def test_get_symbol_raw_default_ticker_not_found(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that a raw BRK-B request the provider does not know still raises SYMBOL_NOT_FOUND.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(failures=[QuoteFailure(symbol_id='BRK-B', reason='not_found')])
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='BRK-B')
+
+    assert exc_info.value.error_code == 'SYMBOL_NOT_FOUND'
+
+# ** test: resolve_symbols_reports_canonical_ids_only
+def test_resolve_symbols_reports_canonical_library_ids_only(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that resolving BRK.B beside its Yahoo ticker BRK-B reports BRK.B alone, and BRK-B falls away with no failure.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={
+        'BRK-B': Symbol(id='BRK-B', exchange='NYSE'),
+        'AAPL': Symbol(id='AAPL', exchange='NASDAQ'),
+    })
+
+    lookup = DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, ids=['BRK.B', 'BRK-B', 'AAPL'], exchanges={'BRK-B': 'NYSE'})
+
+    symbol_lookup_service.lookup.assert_called_once_with(['BRK-B', 'AAPL'])
+    assert list(lookup.symbols) == ['BRK.B', 'AAPL']
+    assert lookup.failures == []
+
 # *** testers
 
 # ** tester: test_get_symbol_event

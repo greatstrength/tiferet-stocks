@@ -403,6 +403,24 @@ def test_no_config_quotes_use_cached_yahoo_provider(no_config, capsys) -> None:
     assert rows == {'AAPL': 'ok', 'SPY': 'ok', 'BRK.B': 'ok'}
     assert not (no_config / 'data').exists()
 
+# ** test: no_config_symbols_canonical
+def test_no_config_symbols_report_canonical_ids_only(no_config, capsys) -> None:
+    '''
+    With no config, symbols get BRK-B answers as BRK.B, and symbols resolve BRK.B BRK-B reports BRK.B alone, with no failure rows.
+    '''
+
+    requested = []
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
+        main(argv=['symbols', 'get', 'BRK-B'])
+        got = capsys.readouterr().out
+        main(argv=['symbols', 'resolve', 'BRK.B', 'BRK-B'])
+        resolved = capsys.readouterr().out
+
+    for out in (got, resolved):
+        rows = [line.split()[:2] for line in out.splitlines() if line.split() and line.split()[0] in ('BRK.B', 'BRK-B')]
+        assert rows == [['BRK.B', 'ok']]
+    assert 'symbol_mismatch' not in got + resolved
+
 # ** test: no_config_explicit_missing
 def test_explicit_missing_config_fails(no_config) -> None:
     '''
