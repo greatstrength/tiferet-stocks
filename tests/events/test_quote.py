@@ -35,15 +35,15 @@ def alias_service(aliases: Dict[str, SymbolAlias] = None) -> mock.Mock:
     '''
     A mock symbol alias service returning the given yahoo_chart aliases, or an empty map.
 
-    :param aliases: The aliases keyed by provider ticker.
+    :param aliases: The aliases keyed by provider ticker; the service returns them as a list of rows.
     :type aliases: Dict[str, SymbolAlias]
     :return: The mock symbol alias service.
     :rtype: mock.Mock
     '''
 
-    # Return data only, as the configured repository does.
+    # Return the rows only, as the configured repository does.
     service = mock.Mock(spec=SymbolAliasService)
-    service.get_aliases.return_value = aliases or {}
+    service.get_aliases.return_value = list((aliases or {}).values())
     return service
 
 # ** function: brk_aliases
@@ -273,10 +273,10 @@ def test_get_quotes_raw_default_ticker_passes_through_when_configured_elsewhere(
     price_service.get_quotes.assert_called_once_with(['BRKB.X', 'BRK-B'])
     assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'BRK-B']
 
-# ** test: get_quotes_duplicate_configured_alias
-def test_get_quotes_rejects_two_configured_aliases_for_one_symbol(price_service: mock.Mock) -> None:
+# ** test: get_quotes_later_row_overwrites
+def test_get_quotes_later_configured_row_overwrites(price_service: mock.Mock) -> None:
     '''
-    Test that X1 and X2 both configured for BRK.B raise ALIAS_PROVIDER_EXISTS before any provider call, rather than one winning by order.
+    Test that with X1 then X2 configured for BRK.B the later row overwrites: BRK.B is sent as X2 and a raw X1 passes through.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
@@ -286,12 +286,34 @@ def test_get_quotes_rejects_two_configured_aliases_for_one_symbol(price_service:
         'X1': SymbolAlias(provider='yahoo_chart', provider_ticker='X1', canonical_id='BRK.B'),
         'X2': SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B'),
     }
+    price_service.get_quotes.return_value = QuoteList(
+        quotes=[Quote(symbol_id='X2', price=589.83, source='yahoo_chart'), Quote(symbol_id='X1', price=1.0, source='yahoo_chart')],
+    )
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B', 'X1'])
+
+    price_service.get_quotes.assert_called_once_with(['X2', 'X1'])
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'X1']
+
+# ** test: get_quotes_shared_ticker_rejected
+def test_get_quotes_rejects_a_ticker_claimed_by_two_symbols(price_service: mock.Mock) -> None:
+    '''
+    Test that BRK-B configured for BRK.B and then for BRKX raises ALIAS_TICKER_EXISTS before any provider call, rather than one winning by order.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    first = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')
+    second = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRKX')
+    service = mock.Mock(spec=SymbolAliasService)
+    service.get_aliases.return_value = [first, second]
 
     with pytest.raises(TiferetError) as caught:
-        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B'])
+        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': service}, symbols=['BRK.B'])
 
-    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
-    assert caught.value.kwargs == {'canonical_id': 'BRK.B', 'provider': 'yahoo_chart', 'existing_ticker': 'X1', 'provider_ticker': 'X2'}
+    assert caught.value.error_code == 'ALIAS_TICKER_EXISTS'
+    assert caught.value.kwargs == {'provider_ticker': 'BRK-B', 'provider': 'yahoo_chart', 'existing_canonical_id': 'BRK.B', 'canonical_id': 'BRKX'}
     price_service.get_quotes.assert_not_called()
 
 # ** test: get_quotes_reports_canonical_ids_only

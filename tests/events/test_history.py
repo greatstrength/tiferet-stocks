@@ -37,15 +37,15 @@ def alias_service(aliases: Dict[str, SymbolAlias] = None) -> mock.Mock:
     '''
     A mock symbol alias service returning the given yahoo_chart aliases, or an empty map.
 
-    :param aliases: The aliases keyed by provider ticker.
+    :param aliases: The aliases keyed by provider ticker; the service returns them as a list of rows.
     :type aliases: Dict[str, SymbolAlias]
     :return: The mock symbol alias service.
     :rtype: mock.Mock
     '''
 
-    # Return data only, as the configured repository does.
+    # Return the rows only, as the configured repository does.
     service = mock.Mock(spec=SymbolAliasService)
-    service.get_aliases.return_value = aliases or {}
+    service.get_aliases.return_value = list((aliases or {}).values())
     return service
 
 # ** function: brk_aliases

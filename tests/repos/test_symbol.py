@@ -105,22 +105,20 @@ def urlopen():
 # ** test: alias_repo_reads_seed
 def test_alias_repo_reads_seed() -> None:
     '''
-    Test that the reference seed holds the BRK.B Yahoo alias, keyed by provider ticker.
+    Test that the reference seed holds the BRK.B Yahoo alias row.
     '''
 
     repo = SymbolAliasRepository(symbol_config=SEED_PATH)
     aliases = repo.get_aliases('yahoo_chart')
 
     assert isinstance(repo, SymbolAliasService)
-    assert aliases['BRK-B'].provider == 'yahoo_chart'
-    assert aliases['BRK-B'].provider_ticker == 'BRK-B'
-    assert aliases['BRK-B'].canonical_id == 'BRK.B'
+    assert [(alias.provider, alias.provider_ticker, alias.canonical_id) for alias in aliases] == [('yahoo_chart', 'BRK-B', 'BRK.B')]
 
 # ** test: alias_repo_filters_by_provider
 @pytest.mark.parametrize('extension', ['yml', 'json'])
 def test_alias_repo_filters_by_provider(tmp_path: Path, extension: str) -> None:
     '''
-    Test that get_aliases returns only the requested provider's rows, keyed by provider ticker, in YAML or JSON.
+    Test that get_aliases returns only the requested provider's rows, in file order, in YAML or JSON.
 
     :param tmp_path: The temporary directory.
     :type tmp_path: Path
@@ -138,9 +136,9 @@ def test_alias_repo_filters_by_provider(tmp_path: Path, extension: str) -> None:
 
     aliases = repo.get_aliases('yahoo_chart')
 
-    assert list(aliases) == ['BRK-B', 'BF-B']
-    assert aliases['BF-B'].canonical_id == 'BF.B'
-    assert repo.get_aliases('other_provider') == {}
+    assert [alias.provider_ticker for alias in aliases] == ['BRK-B', 'BF-B']
+    assert aliases[1].canonical_id == 'BF.B'
+    assert repo.get_aliases('other_provider') == []
 
 # ** test: alias_repo_configured_only
 def test_alias_repo_returns_configured_aliases_only(tmp_path: Path) -> None:
@@ -152,13 +150,33 @@ def test_alias_repo_returns_configured_aliases_only(tmp_path: Path) -> None:
     '''
 
     missing = tmp_path / 'missing.yml'
-    assert SymbolAliasRepository(symbol_config=str(missing)).get_aliases('yahoo_chart') == {}
+    assert SymbolAliasRepository(symbol_config=str(missing)).get_aliases('yahoo_chart') == []
     assert not missing.exists()
 
     path = tmp_path / 'symbols.yml'
     path.write_text(json.dumps({'aliases': [{'provider': 'yahoo_chart', 'provider_ticker': 'BRKB.X', 'canonical_id': 'BRK.B'}]}))
 
-    assert {ticker: alias.canonical_id for ticker, alias in SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart').items()} == {'BRKB.X': 'BRK.B'}
+    assert [(alias.provider_ticker, alias.canonical_id) for alias in SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart')] == [('BRKB.X', 'BRK.B')]
+
+# ** test: alias_repo_every_row
+def test_alias_repo_returns_every_row_uncollapsed(tmp_path: Path) -> None:
+    '''
+    Test that rows sharing a provider ticker, identical or not, all come back in file order with no validation; the alias events check them.
+
+    :param tmp_path: The temporary directory.
+    :type tmp_path: Path
+    '''
+
+    path = tmp_path / 'symbols.yml'
+    path.write_text(json.dumps({'aliases': [
+        {'provider': 'yahoo_chart', 'provider_ticker': 'BRK-B', 'canonical_id': 'BRK.B'},
+        {'provider': 'yahoo_chart', 'provider_ticker': 'BRK-B', 'canonical_id': 'BRKX'},
+        {'provider': 'yahoo_chart', 'provider_ticker': 'BRK-B', 'canonical_id': 'BRK.B'},
+    ]}))
+
+    aliases = SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart')
+
+    assert [(alias.provider_ticker, alias.canonical_id) for alias in aliases] == [('BRK-B', 'BRK.B'), ('BRK-B', 'BRKX'), ('BRK-B', 'BRK.B')]
 
 # ** test: alias_repo_default_path
 def test_alias_repo_defaults_to_asset_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,13 +197,13 @@ def test_alias_repo_defaults_to_asset_path(tmp_path: Path, monkeypatch: pytest.M
 
     assert a.symbol.DEFAULT_SYMBOL_CONFIG_FILE == 'data/symbols.yml'
     assert repo.config_file == a.symbol.DEFAULT_SYMBOL_CONFIG_FILE
-    assert list(repo.get_aliases('yahoo_chart')) == ['BRKB.X']
+    assert [alias.provider_ticker for alias in repo.get_aliases('yahoo_chart')] == ['BRKB.X']
 
 # ** test: alias_repo_empty_documents
 @pytest.mark.parametrize('content', ['', 'other: {}\n', 'aliases:\n', 'aliases: []\n'])
 def test_alias_repo_empty_documents(tmp_path: Path, content: str) -> None:
     '''
-    Test that an empty document, or one with no aliases rows, is an empty map.
+    Test that an empty document, or one with no aliases rows, has no rows.
 
     :param tmp_path: The temporary directory.
     :type tmp_path: Path
@@ -196,14 +214,14 @@ def test_alias_repo_empty_documents(tmp_path: Path, content: str) -> None:
     path = tmp_path / 'symbols.yml'
     path.write_text(content)
 
-    assert SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart') == {}
+    assert SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart') == []
     assert path.read_text() == content
 
 # ** test: alias_repo_missing_file_is_empty
 @pytest.mark.parametrize('extension', ['yml', 'yaml', 'json'])
 def test_alias_repo_missing_file_is_empty(tmp_path: Path, extension: str) -> None:
     '''
-    Test that a missing file and parent are an empty map, do not raise, and are not created.
+    Test that a missing file and parent have no rows, do not raise, and are not created.
 
     :param tmp_path: The temporary directory.
     :type tmp_path: Path
@@ -213,7 +231,7 @@ def test_alias_repo_missing_file_is_empty(tmp_path: Path, extension: str) -> Non
 
     path = tmp_path / 'missing' / f'symbols.{extension}'
 
-    assert SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart') == {}
+    assert SymbolAliasRepository(symbol_config=str(path)).get_aliases('yahoo_chart') == []
     assert not path.exists()
     assert not path.parent.exists()
 

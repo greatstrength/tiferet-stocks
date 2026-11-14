@@ -4,7 +4,7 @@
 
 # ** core
 from abc import abstractmethod
-from typing import Dict, List
+from typing import List
 
 # ** infra
 from tiferet.interfaces import Service
@@ -43,14 +43,14 @@ class SymbolAliasService(Service):
 
     # * method: get_aliases
     @abstractmethod
-    def get_aliases(self, provider: str) -> Dict[str, SymbolAlias]:
+    def get_aliases(self, provider: str) -> List[SymbolAlias]:
         '''
-        Return the aliases for one provider, keyed by provider ticker.
+        Return every configured alias row for one provider, in configuration order, not collapsed by provider ticker.
 
         :param provider: The provider id, such as yahoo_chart.
         :type provider: str
-        :return: The aliases for that provider, keyed by provider ticker.
-        :rtype: Dict[str, SymbolAlias]
+        :return: The aliases for that provider, one per row, in configuration order.
+        :rtype: List[SymbolAlias]
         '''
 
         # Not implemented.

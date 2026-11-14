@@ -3,7 +3,7 @@
 # *** imports
 
 # ** core
-from typing import Dict
+from typing import List
 
 # ** infra
 import pytest
@@ -21,20 +21,20 @@ class BrkAliasService(SymbolAliasService):
     '''
 
     # * method: get_aliases
-    def get_aliases(self, provider: str) -> Dict[str, SymbolAlias]:
+    def get_aliases(self, provider: str) -> List[SymbolAlias]:
         '''
-        Return the BRK.B Yahoo alias when the provider is yahoo_chart, otherwise an empty map.
+        Return the BRK.B Yahoo alias row when the provider is yahoo_chart, otherwise no rows.
 
         :param provider: The provider id.
         :type provider: str
-        :return: The aliases for that provider, keyed by provider ticker.
-        :rtype: Dict[str, SymbolAlias]
+        :return: The alias rows for that provider.
+        :rtype: List[SymbolAlias]
         '''
 
-        # Return data only; an unknown provider is an empty map, not a raise.
+        # Return data only; an unknown provider has no rows, not a raise.
         if provider != YAHOO_CHART:
-            return {}
-        return {'BRK-B': SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')}
+            return []
+        return [SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')]
 
 # *** tests
 
@@ -57,16 +57,16 @@ def test_symbol_alias_service_requires_get_aliases() -> None:
     with pytest.raises(TypeError):
         SymbolAliasService()
 
-# ** test: get_aliases_returns_map_keyed_by_provider_ticker
-def test_get_aliases_returns_map_keyed_by_provider_ticker() -> None:
+# ** test: get_aliases_returns_rows
+def test_get_aliases_returns_rows() -> None:
     '''
-    Test that an implementation returns Dict[str, SymbolAlias] keyed by provider ticker.
+    Test that an implementation returns List[SymbolAlias], one per configured row.
     '''
 
     service = BrkAliasService()
     aliases = service.get_aliases(YAHOO_CHART)
 
-    assert list(aliases) == ['BRK-B']
-    assert aliases['BRK-B'].canonical_id == 'BRK.B'
-    assert aliases['BRK-B'].provider == YAHOO_CHART
-    assert service.get_aliases('unknown') == {}
+    assert [alias.provider_ticker for alias in aliases] == ['BRK-B']
+    assert aliases[0].canonical_id == 'BRK.B'
+    assert aliases[0].provider == YAHOO_CHART
+    assert service.get_aliases('unknown') == []

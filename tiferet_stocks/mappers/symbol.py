@@ -23,24 +23,17 @@ class SymbolAggregate(Symbol, Aggregate):
     # * attribute: _SETTABLE_ATTRIBUTES
     _SETTABLE_ATTRIBUTES: ClassVar[set] = {'id'}
 
-    # * method: add_alias
-    def add_alias(self, alias: SymbolAlias) -> None:
+    # * method: set_alias
+    def set_alias(self, alias: SymbolAlias) -> None:
         '''
-        Add a SymbolAlias to the restricted collection.
+        Set the symbol's alias for the alias's provider in the restricted collection, adding it or replacing the alias the
+        symbol already has for that provider.
 
-        :param alias: The alias to add.
+        :param alias: The alias to set.
         :type alias: SymbolAlias
         :return: None
         :rtype: None
         '''
-
-        # Reject a second alias for a provider that is already on the symbol.
-        if any(existing.provider == alias.provider for existing in self.aliases):
-            ModelError.raise_error(
-                'ALIAS_PROVIDER_EXISTS',
-                message=f'A symbol accepts at most one alias per provider: {alias.provider}.',
-                model=self,
-            )
 
         # Reject an alias that does not belong to this symbol.
         if alias.canonical_id != self.id and alias.provider_ticker != self.id:
@@ -50,8 +43,8 @@ class SymbolAggregate(Symbol, Aggregate):
                 model=self,
             )
 
-        # Copy and reassign so field validation runs before state changes.
-        aliases = list(self.aliases)
+        # Replace any alias for the same provider; copy and reassign so field validation runs before state changes.
+        aliases = [existing for existing in self.aliases if existing.provider != alias.provider]
         aliases.append(alias)
         self.aliases = aliases
 

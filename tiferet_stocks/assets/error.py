@@ -16,8 +16,8 @@ QUOTES_UNAVAILABLE_ID = 'QUOTES_UNAVAILABLE'
 # ** constant: symbol_not_found_id
 SYMBOL_NOT_FOUND_ID = 'SYMBOL_NOT_FOUND'
 
-# ** constant: alias_provider_exists_id
-ALIAS_PROVIDER_EXISTS_ID = 'ALIAS_PROVIDER_EXISTS'
+# ** constant: alias_ticker_exists_id
+ALIAS_TICKER_EXISTS_ID = 'ALIAS_TICKER_EXISTS'
 
 # ** constant: watchlist_not_found_id
 WATCHLIST_NOT_FOUND_ID = 'WATCHLIST_NOT_FOUND'
@@ -54,10 +54,10 @@ SYMBOL_NOT_FOUND_DATA = create_default_error_data(
     [(EN_US, 'Symbol not found: {id}.')],
 )
 
-# ** constant: alias_provider_exists_data
-ALIAS_PROVIDER_EXISTS_DATA = create_default_error_data(
-    'Alias Provider Exists',
-    [(EN_US, 'Symbol {canonical_id} has more than one {provider} alias: {existing_ticker} and {provider_ticker}.')],
+# ** constant: alias_ticker_exists_data
+ALIAS_TICKER_EXISTS_DATA = create_default_error_data(
+    'Alias Ticker Exists',
+    [(EN_US, 'Ticker {provider_ticker} is a {provider} alias for more than one symbol: {existing_canonical_id} and {canonical_id}.')],
 )
 
 # ** constant: watchlist_not_found_data
@@ -108,7 +108,7 @@ INVALID_HISTORY_RANGE_DATA = create_default_error_data(
 DEFAULT_ERRORS = {
     QUOTES_UNAVAILABLE_ID: QUOTES_UNAVAILABLE_DATA,
     SYMBOL_NOT_FOUND_ID: SYMBOL_NOT_FOUND_DATA,
-    ALIAS_PROVIDER_EXISTS_ID: ALIAS_PROVIDER_EXISTS_DATA,
+    ALIAS_TICKER_EXISTS_ID: ALIAS_TICKER_EXISTS_DATA,
     HISTORY_UNAVAILABLE_ID: HISTORY_UNAVAILABLE_DATA,
     INVALID_HISTORY_RANGE_ID: INVALID_HISTORY_RANGE_DATA,
     WATCHLIST_NOT_FOUND_ID: WATCHLIST_NOT_FOUND_DATA,

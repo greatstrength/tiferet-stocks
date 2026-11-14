@@ -121,66 +121,48 @@ def test_apply_alias_rejects_alias_not_in_collection() -> None:
     assert caught.value.error_code == 'ALIAS_NOT_IN_COLLECTION'
     assert symbol.id == 'BRK-B'
 
-# ** test: add_alias_then_apply_alias
-def test_add_alias_then_apply_alias() -> None:
+# ** test: set_alias_then_apply_alias
+def test_set_alias_then_apply_alias() -> None:
     '''
-    Test that add_alias places the value object on the collection, and apply_alias then sets id.
+    Test that set_alias places the value object on the collection, and apply_alias then sets id.
     '''
 
     alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
     symbol = SymbolAggregate(id='BRK-B')
 
-    symbol.add_alias(alias)
+    symbol.set_alias(alias)
     assert symbol.aliases == [alias]
     assert symbol.id == 'BRK-B'
 
     symbol.apply_alias(alias)
     assert symbol.id == 'BRK.B'
 
-# ** test: add_alias_rejects_second_alias_for_same_provider
-def test_add_alias_rejects_second_alias_for_same_provider() -> None:
+# ** test: set_alias_overwrites_same_provider
+def test_set_alias_overwrites_the_alias_for_the_same_provider() -> None:
     '''
-    Test that add_alias rejects a second alias for a provider already on the collection.
-    '''
-
-    first = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
-    second = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
-    symbol = SymbolAggregate(id='BRK.B', aliases=[first])
-
-    with pytest.raises(ModelError) as caught:
-        symbol.add_alias(second)
-
-    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
-    assert symbol.aliases == [first]
-
-# ** test: add_alias_rejects_second_configured_ticker_for_same_provider
-def test_add_alias_rejects_second_configured_ticker_for_same_provider() -> None:
-    '''
-    Test that two same-provider configured rows for one canonical id under different tickers (X1, then X2 for BRK.B) are a data-integrity error, not resolved by order.
+    Test that set_alias replaces the alias the symbol already has for the provider, so X1 then X2 for BRK.B leaves X2.
     '''
 
     first = SymbolAlias(provider=YAHOO_CHART, provider_ticker='X1', canonical_id='BRK.B')
     second = SymbolAlias(provider=YAHOO_CHART, provider_ticker='X2', canonical_id='BRK.B')
     symbol = SymbolAggregate(id='BRK.B')
-    symbol.add_alias(first)
 
-    with pytest.raises(ModelError) as caught:
-        symbol.add_alias(second)
+    symbol.set_alias(first)
+    symbol.set_alias(second)
 
-    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
-    assert symbol.aliases == [first]
+    assert symbol.aliases == [second]
 
-# ** test: add_alias_rejects_alias_for_another_symbol
-def test_add_alias_rejects_alias_for_another_symbol() -> None:
+# ** test: set_alias_rejects_alias_for_another_symbol
+def test_set_alias_rejects_alias_for_another_symbol() -> None:
     '''
-    Test that add_alias rejects an alias that does not belong to this symbol.
+    Test that set_alias rejects an alias that does not belong to this symbol.
     '''
 
     alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
     symbol = SymbolAggregate(id='AAPL')
 
     with pytest.raises(ModelError) as caught:
-        symbol.add_alias(alias)
+        symbol.set_alias(alias)
 
     assert caught.value.error_code == 'ALIAS_NOT_FOR_SYMBOL'
     assert symbol.aliases == []

@@ -424,7 +424,7 @@ def test_alias_service_returns_configured_aliases_only(no_config) -> None:
     container = core.build_app_service_container(cache, app_instance=core.get_app_session(a.STOCKS_CLI_SESSION_ID, cache=cache))
     service = container.get_dependency(a.SYMBOL_ALIAS_SERVICE_ID)
 
-    assert service.get_aliases(a.YAHOO_CHART_PROVIDER_ID) == {}
+    assert service.get_aliases(a.YAHOO_CHART_PROVIDER_ID) == []
     assert not Path(service.config_file).exists()
 
 # ** test: configured_alias_wins
@@ -445,10 +445,10 @@ def test_configured_symbols_file_alias_beats_yahoo_default(no_config, capsys) ->
     rows = {line.split()[0]: line.split()[1] for line in capsys.readouterr().out.splitlines() if line.split() and line.split()[0] in ('BRKB.X', 'BRK.B')}
     assert rows == {'BRKB.X': 'ok', 'BRK.B': 'failed'}
 
-# ** test: duplicate_configured_alias
-def test_symbols_file_two_aliases_for_one_symbol_fail(no_config, capsys) -> None:
+# ** test: later_row_overwrites
+def test_symbols_file_later_row_overwrites(no_config) -> None:
     '''
-    A data/symbols.yml with two yahoo_chart rows for BRK.B exits 1 with the catalogued ALIAS_PROVIDER_EXISTS message naming both tickers, before any request and with no traceback.
+    A data/symbols.yml with two yahoo_chart rows for BRK.B (X1, then X2) overwrites: BRK.B is requested as X2.
     '''
 
     (no_config / 'data').mkdir()
@@ -457,13 +457,31 @@ def test_symbols_file_two_aliases_for_one_symbol_fail(no_config, capsys) -> None
         {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X2', 'canonical_id': 'BRK.B'},
     ]}))
 
+    requested = []
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
+        with pytest.raises(SystemExit):
+            main(argv=['quotes', 'get', 'BRK.B'])
+    assert requested == ['cookie', 'crumb', 'quote:X2']
+
+# ** test: shared_ticker_rejected
+def test_symbols_file_shared_ticker_fails(no_config, capsys) -> None:
+    '''
+    A data/symbols.yml mapping BRK-B to BRK.B, then BRK-B to BRKX, exits 1 with the catalogued ALIAS_TICKER_EXISTS message naming the ticker, the provider and both symbols, before any request and with no traceback.
+    '''
+
+    (no_config / 'data').mkdir()
+    (no_config / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'BRK-B', 'canonical_id': 'BRK.B'},
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'BRK-B', 'canonical_id': 'BRKX'},
+    ]}))
+
     with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')):
         with pytest.raises(SystemExit) as exited:
-            main(argv=['quotes', 'get', 'BRK.B'])
+            main(argv=['quotes', 'get', 'BRK.B', 'BRKX'])
     assert exited.value.code == 1
     err = capsys.readouterr().err
-    assert 'ALIAS_PROVIDER_EXISTS' in err
-    assert 'Symbol BRK.B has more than one yahoo_chart alias: X1 and X2.' in err
+    assert 'ALIAS_TICKER_EXISTS' in err
+    assert 'Ticker BRK-B is a yahoo_chart alias for more than one symbol: BRK.B and BRKX.' in err
     assert 'Traceback' not in err
 
 # ** test: configured_ticker_replaces_default
@@ -583,23 +601,22 @@ def test_installed_console_with_no_config(installed_cli, tmp_path) -> None:
 
     helped = run('--help')
     assert helped.returncode == 0, helped.stderr
-
-    # A duplicate provider alias in the symbols file is a clean catalogued exit 1, not a traceback.
-    (cwd / 'data').mkdir()
-    (cwd / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [
-        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X1', 'canonical_id': 'BRK.B'},
-        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X2', 'canonical_id': 'BRK.B'},
-    ]}))
-    duplicate = run('quotes', 'get', 'BRK.B')
-    assert duplicate.returncode == 1
-    assert 'Symbol BRK.B has more than one yahoo_chart alias: X1 and X2.' in duplicate.stderr
-    assert 'Traceback' not in duplicate.stderr + duplicate.stdout
-    (cwd / 'data' / 'symbols.yml').unlink()
-    (cwd / 'data').rmdir()
     assert 'watchlists' in helped.stdout
     listed = run('exchanges', 'list')
     assert listed.returncode == 0, listed.stderr
     assert 'NASDAQ' in listed.stdout
+    # A shared provider ticker in the symbols file is a clean catalogued exit 1, not a traceback.
+    (cwd / 'data').mkdir()
+    (cwd / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'BRK-B', 'canonical_id': 'BRK.B'},
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'BRK-B', 'canonical_id': 'BRKX'},
+    ]}))
+    shared = run('quotes', 'get', 'BRK.B', 'BRKX')
+    assert shared.returncode == 1
+    assert 'Ticker BRK-B is a yahoo_chart alias for more than one symbol: BRK.B and BRKX.' in shared.stderr
+    assert 'Traceback' not in shared.stderr + shared.stdout
+    (cwd / 'data' / 'symbols.yml').unlink()
+    (cwd / 'data').rmdir()
     rejected = run('watchlists', 'add', 'tech', 'AAPL')
     assert rejected.returncode == 1
     assert 'WATCHLIST_NOT_FOUND' in rejected.stderr

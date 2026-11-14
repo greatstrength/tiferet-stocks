@@ -25,10 +25,12 @@ from tiferet_stocks.events import (
     GetSymbol,
     ListExchanges,
     ResolveSymbols,
+    SetSymbolAlias,
     SymbolAliasEvent,
     SymbolLookupEvent,
 )
 from tiferet_stocks.interfaces import SymbolAliasService, SymbolLookupService
+from tiferet_stocks.mappers import SymbolAggregate
 
 # *** fixtures
 
@@ -57,15 +59,15 @@ def alias_service(aliases: Dict[str, SymbolAlias] = None) -> mock.Mock:
     '''
     A mock symbol alias service returning the given yahoo_chart aliases, or an empty map.
 
-    :param aliases: The aliases keyed by provider ticker.
+    :param aliases: The aliases keyed by provider ticker; the service returns them as a list of rows.
     :type aliases: Dict[str, SymbolAlias]
     :return: The mock symbol alias service.
     :rtype: mock.Mock
     '''
 
-    # Return data only, as the configured repository does.
+    # Return the rows only, as the configured repository does.
     service = mock.Mock(spec=SymbolAliasService)
-    service.get_aliases.return_value = aliases or {}
+    service.get_aliases.return_value = list((aliases or {}).values())
     return service
 
 # ** function: brk_aliases
@@ -420,7 +422,7 @@ def test_alias_event_other_provider_gets_no_yahoo_defaults() -> None:
 ])
 def test_alias_event_configured_alias_wins(provider_ticker: str, canonical_id: str) -> None:
     '''
-    Test that a configured alias covering a default's provider ticker or canonical id drops that default, and other configured aliases are kept.
+    Test that a configured alias covering a default's provider ticker or canonical id drops that default, and other configured aliases are kept, with no ALIAS_TICKER_EXISTS: a default shadowed by config is not a cross-symbol error.
 
     :param provider_ticker: The configured provider ticker.
     :type provider_ticker: str
@@ -435,10 +437,40 @@ def test_alias_event_configured_alias_wins(provider_ticker: str, canonical_id: s
 
     assert SymbolAliasEvent(alias_service(configured)).get_aliases('yahoo_chart') == configured
 
-# ** test: alias_event_duplicate_configured_alias
-def test_alias_event_rejects_two_configured_aliases_for_one_symbol() -> None:
+# ** test: set_symbol_alias_creates
+def test_set_symbol_alias_creates_the_symbol_alias() -> None:
     '''
-    Test that two configured aliases of one provider for one canonical id raise ALIAS_PROVIDER_EXISTS instead of resolving by order.
+    Test that SetSymbolAlias adds an alias for a new symbol, creating the symbol under its canonical id.
+    '''
+
+    alias = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbols = {}
+
+    symbol = DomainEvent.handle(SetSymbolAlias, alias=alias, symbols=symbols)
+
+    assert symbols == {'BRK.B': symbol}
+    assert symbol.id == 'BRK.B'
+    assert symbol.aliases == [alias]
+
+# ** test: set_symbol_alias_overwrites
+def test_set_symbol_alias_overwrites_the_provider_alias() -> None:
+    '''
+    Test that SetSymbolAlias overwrites the symbol's alias for the same provider, and keeps an alias for another provider.
+    '''
+
+    other = SymbolAlias.model_construct(provider='other_feed', provider_ticker='BRK/B', canonical_id='BRK.B')
+    symbols = {'BRK.B': SymbolAggregate(id='BRK.B', aliases=[SymbolAlias(provider='yahoo_chart', provider_ticker='X1', canonical_id='BRK.B'), other])}
+    alias = SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B')
+
+    symbol = DomainEvent.handle(SetSymbolAlias, alias=alias, symbols=symbols)
+
+    assert symbol is symbols['BRK.B']
+    assert symbol.aliases == [other, alias]
+
+# ** test: alias_event_later_row_overwrites
+def test_alias_event_later_configured_row_overwrites() -> None:
+    '''
+    Test that two configured rows of one provider for BRK.B (X1 then X2) leave X2, so a raw X1 has no alias.
     '''
 
     configured = {
@@ -446,22 +478,53 @@ def test_alias_event_rejects_two_configured_aliases_for_one_symbol() -> None:
         'X2': SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B'),
     }
 
-    with pytest.raises(TiferetError) as caught:
-        SymbolAliasEvent(alias_service(configured)).get_aliases('yahoo_chart')
+    assert SymbolAliasEvent(alias_service(configured)).get_aliases('yahoo_chart') == {'X2': configured['X2']}
 
-    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
-    assert caught.value.kwargs == {'canonical_id': 'BRK.B', 'provider': 'yahoo_chart', 'existing_ticker': 'X1', 'provider_ticker': 'X2'}
+# ** test: set_symbol_alias_rejects_shared_ticker
+def test_set_symbol_alias_rejects_a_ticker_claimed_by_another_symbol() -> None:
+    '''
+    Test that SetSymbolAlias rejects a provider ticker already claimed by another symbol as ALIAS_TICKER_EXISTS, naming the ticker, the provider and both symbols, and leaves the first symbol unchanged.
+    '''
+
+    first = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')
+    second = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRKX')
+    symbols = {'BRK.B': SymbolAggregate(id='BRK.B', aliases=[first])}
+
+    with pytest.raises(TiferetError) as caught:
+        DomainEvent.handle(SetSymbolAlias, alias=second, symbols=symbols)
+
+    assert caught.value.error_code == 'ALIAS_TICKER_EXISTS'
+    assert caught.value.kwargs == {'provider_ticker': 'BRK-B', 'provider': 'yahoo_chart', 'existing_canonical_id': 'BRK.B', 'canonical_id': 'BRKX'}
+    assert symbols['BRK.B'].aliases == [first]
+    assert 'BRKX' not in symbols
+
+# ** test: alias_event_shared_ticker_rejected
+def test_alias_event_rejects_a_ticker_claimed_by_two_symbols() -> None:
+    '''
+    Test that two configured rows mapping BRK-B to BRK.B and then to BRKX raise ALIAS_TICKER_EXISTS instead of resolving by order.
+    '''
+
+    first = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')
+    second = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRKX')
+    service = mock.Mock(spec=SymbolAliasService)
+    service.get_aliases.return_value = [first, second]
+
+    with pytest.raises(TiferetError) as caught:
+        SymbolAliasEvent(service).get_aliases('yahoo_chart')
+
+    assert caught.value.error_code == 'ALIAS_TICKER_EXISTS'
+    assert caught.value.kwargs == {'provider_ticker': 'BRK-B', 'provider': 'yahoo_chart', 'existing_canonical_id': 'BRK.B', 'canonical_id': 'BRKX'}
 
 # ** test: alias_event_one_alias_per_provider
 def test_alias_event_allows_one_alias_per_provider_for_one_symbol() -> None:
     '''
-    Test that one canonical id may have an alias under each provider: each provider's aliases are checked on their own.
+    Test that one canonical id may have an alias under each provider, even with the same ticker: each provider's aliases are checked on their own.
     '''
 
     yahoo = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
-    other = {'BRK/B': SymbolAlias.model_construct(provider='other_feed', provider_ticker='BRK/B', canonical_id='BRK.B')}
+    other = {'BRKB.X': SymbolAlias.model_construct(provider='other_feed', provider_ticker='BRKB.X', canonical_id='BRK.B')}
     service = mock.Mock(spec=SymbolAliasService)
-    service.get_aliases.side_effect = lambda provider: yahoo if provider == 'yahoo_chart' else other
+    service.get_aliases.side_effect = lambda provider: list((yahoo if provider == 'yahoo_chart' else other).values())
     event = SymbolAliasEvent(service)
 
     assert event.get_aliases('yahoo_chart')['BRKB.X'] == yahoo['BRKB.X']

@@ -6,7 +6,6 @@
 from typing import Dict, List
 
 # ** infra
-from tiferet.domain import ModelError
 from tiferet.events import DomainEvent
 
 # ** app
@@ -49,14 +48,65 @@ def apply_symbol_alias(symbol: Symbol, aliases: Dict[str, SymbolAlias]) -> Symbo
     if alias is None:
         return symbol
 
-    # Add the alias to a copy of the aggregate and apply it, so only apply_alias sets the id.
+    # Set the alias on a copy of the aggregate and apply it, so only apply_alias sets the id.
     aggregate = SymbolAggregate.model_validate(symbol.model_dump())
-    if alias not in aggregate.aliases:
-        aggregate.add_alias(alias)
+    aggregate.set_alias(alias)
     aggregate.apply_alias(alias)
     return aggregate
 
 # *** events
+
+# ** event: set_symbol_alias
+class SetSymbolAlias(DomainEvent):
+    '''
+    Sets one symbol alias: adds it to its symbol, or overwrites the alias the symbol already has for that provider.
+    '''
+
+    # * method: execute
+    @DomainEvent.parameters_required(['alias'])
+    def execute(self, alias: SymbolAlias, symbols: Dict[str, SymbolAggregate] = None, **kwargs) -> SymbolAggregate:
+        '''
+        Set the alias on the symbol of its canonical id, creating the symbol in the given symbols when it is new.
+
+        A later alias for the same symbol and provider overwrites the earlier one. A provider ticker already claimed
+        by another symbol is the catalogued ALIAS_TICKER_EXISTS, naming the ticker, the provider and both symbols.
+
+        :param alias: The alias to set.
+        :type alias: SymbolAlias
+        :param symbols: The symbols keyed by canonical id, updated in place; None starts from no symbols.
+        :type symbols: Dict[str, SymbolAggregate] | None
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The symbol holding the alias.
+        :rtype: SymbolAggregate
+        '''
+
+        # Start from no symbols when the caller does not pass a map.
+        if symbols is None:
+            symbols = {}
+
+        # Reject a provider ticker already claimed by another symbol.
+        for existing_symbol in symbols.values():
+            for existing in existing_symbol.aliases:
+                if (
+                    existing.provider == alias.provider
+                    and existing.provider_ticker == alias.provider_ticker
+                    and existing.canonical_id != alias.canonical_id
+                ):
+                    self.raise_error(
+                        a.ALIAS_TICKER_EXISTS_ID,
+                        provider_ticker=alias.provider_ticker,
+                        provider=alias.provider,
+                        existing_canonical_id=existing.canonical_id,
+                        canonical_id=alias.canonical_id,
+                    )
+
+        # Find or create the symbol for the alias's canonical id.
+        symbol = symbols.setdefault(alias.canonical_id, SymbolAggregate(id=alias.canonical_id))
+
+        # Add the alias, or overwrite the symbol's alias for the same provider.
+        symbol.set_alias(alias)
+        return symbol
 
 # ** event: symbol_alias_event
 class SymbolAliasEvent(DomainEvent):
@@ -84,10 +134,11 @@ class SymbolAliasEvent(DomainEvent):
         '''
         Return one merged alias map for a provider: the configured aliases, which take precedence, and the default aliases from the assets.
 
-        The caller uses the returned map for both the outbound and the inbound direction of one call. A configured source
-        may hold at most one alias per provider for a canonical id; every configured row runs through SymbolAggregate.add_alias,
-        so a second one is a data-integrity error, the catalogued ALIAS_PROVIDER_EXISTS naming the canonical id, the
-        provider and both tickers, rather than being resolved by order.
+        The caller uses the returned map for both the outbound and the inbound direction of one call. Every configured row
+        runs through SetSymbolAlias, in configuration order, so a later row for the same symbol and provider overwrites
+        the earlier one. A provider ticker claimed by two symbols is the catalogued ALIAS_TICKER_EXISTS, naming the
+        ticker, the provider and both symbols. A configured alias still replaces a default with the same provider ticker
+        or canonical id, and that shadowed default is dropped, so it does not raise a cross-symbol error.
 
         :param provider: The provider id, such as yahoo_chart.
         :type provider: str
@@ -102,25 +153,18 @@ class SymbolAliasEvent(DomainEvent):
             for provider_ticker, data in defaults.items()
         }
 
-        # Reject a second configured alias for one canonical id through the aggregate's one-alias-per-provider rule, as
-        # the catalogued error naming the alias already on the symbol and the clashing one.
-        configured = self.symbol_alias_service.get_aliases(provider)
+        # Set every configured row on its symbol, in configuration order, overwriting the symbol's alias for the provider.
         symbols = {}
-        for alias in configured.values():
-            symbol = symbols.setdefault(alias.canonical_id, SymbolAggregate(id=alias.canonical_id))
-            try:
-                symbol.add_alias(alias)
-            except ModelError as error:
-                if error.error_code != a.ALIAS_PROVIDER_EXISTS_ID:
-                    raise
-                existing = next(existing for existing in symbol.aliases if existing.provider == alias.provider)
-                self.raise_error(
-                    a.ALIAS_PROVIDER_EXISTS_ID,
-                    canonical_id=alias.canonical_id,
-                    provider=alias.provider,
-                    existing_ticker=existing.provider_ticker,
-                    provider_ticker=alias.provider_ticker,
-                )
+        set_symbol_alias = SetSymbolAlias()
+        for alias in self.symbol_alias_service.get_aliases(provider):
+            set_symbol_alias.execute(alias=alias, symbols=symbols)
+
+        # Key the aliases the symbols hold by provider ticker; a later row for the same symbol has already overwritten.
+        configured = {}
+        for symbol in symbols.values():
+            for alias in symbol.aliases:
+                if alias.provider == provider:
+                    configured[alias.provider_ticker] = alias
 
         # Merge them with the configured aliases, which take precedence.
         return merge_symbol_aliases(configured, default_aliases)

@@ -60,22 +60,21 @@ class SymbolAliasRepository(SymbolAliasService, ConfigurationRepository):
         return self._load() or {}
 
     # * method: get_aliases
-    def get_aliases(self, provider: str) -> Dict[str, SymbolAlias]:
+    def get_aliases(self, provider: str) -> List[SymbolAlias]:
         '''
-        Return the aliases for one provider, keyed by provider ticker.
+        Return every configured alias row for one provider, in file order, with no validation or collapsing.
 
         :param provider: The provider id, such as yahoo_chart.
         :type provider: str
-        :return: The aliases for that provider, keyed by provider ticker.
-        :rtype: Dict[str, SymbolAlias]
+        :return: The aliases for that provider, one per row, in file order.
+        :rtype: List[SymbolAlias]
         '''
 
         # Read the aliases list without touching filesystem state.
         rows = self._read_document().get('aliases') or []
 
-        # Keep only the requested provider's rows, keyed by provider ticker.
-        aliases = [SymbolAlias.model_validate(row) for row in rows if row.get('provider') == provider]
-        return {alias.provider_ticker: alias for alias in aliases}
+        # Keep every row for the requested provider; the alias events check and key them.
+        return [SymbolAlias.model_validate(row) for row in rows if row.get('provider') == provider]
 
 # ** repo: yahoo_chart_symbol_repository
 class YahooChartSymbolRepository(YahooChartClient, SymbolLookupService):

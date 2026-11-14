@@ -196,9 +196,10 @@ def merge_symbol_aliases(configured: Dict[str, SymbolAlias], defaults: Dict[str,
     '''
     Return one alias map for a provider in which the later definition wins: the defaults first, then the configured aliases in order.
 
-    A default is dropped when a configured alias has its provider ticker or its canonical id. The configured aliases hold
-    at most one alias per canonical id, which the alias events enforce with ALIAS_PROVIDER_EXISTS, so each canonical id
-    has one alias and the merged map is safe to use in both directions.
+    A default is dropped when a configured alias has its provider ticker or its canonical id, including when that
+    default would otherwise share a ticker with a configured row for a different symbol. The configured aliases hold
+    one ticker per canonical id, since SetSymbolAlias overwrites a symbol's alias for the provider, so each canonical id
+    has one alias in the merged map.
 
     :param configured: The configured aliases for one provider, keyed by provider ticker, at most one per canonical id.
     :type configured: Dict[str, SymbolAlias]
