@@ -1,6 +1,6 @@
 # RFP-005 CLI acceptance
 
-Scope: issue #6's thirteen configured commands, unchanged feature ids and domain behavior, released Tiferet 2.2.2b1. The Chief resolved installed discovery to CWD config.yml or --config, selected per-symbol output retaining all warnings/failures, and approved composing the existing public lower-level CLI factories because the released one-call builder hardwires its parser/request context. These are local implementation checks for Saito/QA, not QA approval or checked issue boxes.
+Scope: issue #6's thirteen configured commands, unchanged feature ids and domain behavior, on Tiferet 2.2.2b1 (a pre-release; a plain install resolves 2.2.1, and both are tested). The Chief resolved installed discovery to CWD config.yml or --config, selected per-symbol output retaining all warnings/failures, and approved composing the existing public lower-level CLI factories because the released one-call builder hardwires its parser/request context. These are local implementation checks for Saito/QA, not QA approval or checked issue boxes.
 
 ## Twelve criteria
 
@@ -24,8 +24,8 @@ The numbering follows https://github.com/greatstrength/tiferet-stocks/issues/6 i
 ## Reproduction
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 /workspace/tif-ai/major-venvs/stocks-222b1/bin/python -m pytest -q -p no:cacheprovider tests/test_cli_catalog.py tests/test_cli_presentation.py tests/test_cli_bootstrap.py tests/test_cli_acceptance.py
-PYTHONDONTWRITEBYTECODE=1 /workspace/tif-ai/major-venvs/stocks-222b1/bin/python -m pytest -q -p no:cacheprovider
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider tests/test_cli_catalog.py tests/test_cli_presentation.py tests/test_cli_bootstrap.py tests/test_cli_acceptance.py
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider
 ```
 
 The packaging fixture creates a fresh temporary venv, installs the built wheel without dependencies/index access, and appends only the authoritative environment's existing released dependency directory through a .pth file. It removes inherited PYTHONPATH and checks the stocks import resolves to its own installed site-packages. Acceptance adds only the test-helper directory to PYTHONPATH, never repository production sources. The helper is not included in the wheel and adds no production provider or domain contract.
