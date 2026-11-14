@@ -16,6 +16,7 @@ from ..domain import (
     rekey_map,
     rekey_symbol_id,
     rekey_symbol_ids,
+    to_canonical_id,
     to_provider_tickers,
 )
 from ..interfaces import PriceService, SymbolAliasService
@@ -82,11 +83,11 @@ class GetQuotes(SymbolAliasEvent):
             fetched_at=provided.fetched_at,
         )
 
-        # Raise the catalogued error only when no symbol produced a quote.
+        # Raise the catalogued error only when no symbol produced a quote, naming an aliased provider ticker by its canonical id.
         self.verify(
             bool(quotes.quotes),
             a.QUOTES_UNAVAILABLE_ID,
-            symbols=', '.join(dict.fromkeys(symbols)),
+            symbols=', '.join(dict.fromkeys(to_canonical_id(symbol_id, aliases) for symbol_id in symbols)),
             failures=[failure.model_dump() for failure in quotes.failures],
         )
 

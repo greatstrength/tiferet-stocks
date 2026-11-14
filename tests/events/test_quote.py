@@ -315,6 +315,43 @@ def test_get_quotes_reports_canonical_library_ids_only(price_service: mock.Mock)
     assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'AAPL']
     assert quotations.failures == []
 
+# ** test: get_quotes_unavailable_names_canonical_ids
+def test_get_quotes_unavailable_names_aliased_ticker_by_canonical_id(price_service: mock.Mock) -> None:
+    '''
+    Test that QUOTES_UNAVAILABLE names a requested provider ticker that is an alias by its canonical id, and keeps a raw passthrough id as given.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    price_service.get_quotes.return_value = QuoteList(failures=[
+        QuoteFailure(symbol_id='BRK-B', reason='not_found'),
+        QuoteFailure(symbol_id='ZZZZQ', reason='not_found'),
+    ])
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['BRK-B', 'BRK.B', 'ZZZZQ'])
+
+    assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
+    assert exc_info.value.kwargs['symbols'] == 'BRK.B, ZZZZQ'
+
+# ** test: get_quotes_unavailable_raw_passthrough
+def test_get_quotes_unavailable_keeps_raw_passthrough_id(price_service: mock.Mock) -> None:
+    '''
+    Test that with BRK.B configured as BRKB.X a raw BRK-B is no alias, passes through and is named as given.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    configured = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    price_service.get_quotes.return_value = QuoteList(failures=[QuoteFailure(symbol_id='BRK-B', reason='not_found')])
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK-B'])
+
+    assert exc_info.value.kwargs['symbols'] == 'BRK-B'
+
 # *** testers
 
 # ** tester: test_get_quotes_event
