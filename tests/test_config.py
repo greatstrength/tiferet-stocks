@@ -263,3 +263,36 @@ def test_history_errors_config_match_assets(error_id: str, error_data: dict) -> 
 
     assert config['errors'][error_id] == error_data
     assert a.DEFAULT_ERRORS[error_id] == error_data
+
+# ** test: symbol_not_found_config_matches_assets
+def test_symbol_not_found_config_matches_assets() -> None:
+    '''
+    Test that the reference config catalogues SYMBOL_NOT_FOUND with the default error data from assets.
+    '''
+
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as file:
+        config = yaml.safe_load(file)
+
+    assert config['errors'][a.SYMBOL_NOT_FOUND_ID] == a.SYMBOL_NOT_FOUND_DATA
+    assert a.DEFAULT_ERRORS[a.SYMBOL_NOT_FOUND_ID] == a.SYMBOL_NOT_FOUND_DATA
+
+# ** test: symbol_services_wired_independently
+def test_symbol_services_wired_independently() -> None:
+    '''
+    Test that the alias, lookup and price services are separate entries, and the alias service is listed before the events
+    that inject it.
+    '''
+
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as file:
+        services = yaml.safe_load(file)['services']
+    order = list(services)
+
+    assert services[a.SYMBOL_ALIAS_SERVICE_ID] == {
+        'module_path': 'tiferet_stocks.repos.symbol',
+        'class_name': 'SymbolAliasRepository',
+        'params': {'symbol_config': 'data/symbols.yml'},
+    }
+    assert services[a.SYMBOL_LOOKUP_SERVICE_ID]['class_name'] == 'YahooChartSymbolRepository'
+    assert services[a.PRICE_SERVICE_ID]['class_name'] == 'YahooChartPriceRepository'
+    for event_id in (a.GET_SYMBOL_EVENT_ID, a.RESOLVE_SYMBOLS_EVENT_ID, a.GET_QUOTES_EVENT_ID, a.GET_HISTORY_EVENT_ID):
+        assert order.index(a.SYMBOL_ALIAS_SERVICE_ID) < order.index(event_id)

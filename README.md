@@ -13,6 +13,10 @@ The reference `stocks_client` session exposes `watchlists.get`, `watchlists.list
 
 Every successful change except delete stamps `updated_at`, setting `created_at` only on creation. An explicit offset-bearing ISO `at` overrides the event clock. Reads never stamp. Duplicate ids, absent watchlists/symbols and invalid negative positions are checked before aggregate mutation and resolve through the configured watchlist error catalog. Adding a ticker does not look it up. Changes work on private aggregates so rejected requests do not mutate service-held objects.
 
+## Symbol aliases
+
+Some tickers differ between the library and a provider: Yahoo expects `BRK-B` for the canonical `BRK.B`. The reference configuration reads provider ticker aliases from `data/symbols.yml`, an `aliases` list whose rows carry `provider` (`yahoo_chart`), `provider_ticker` and `canonical_id`. The symbol, quote and history features send the provider ticker and answer under the canonical ticker; providers stay alias-free. A missing symbols file is an empty alias map and is never created. The seed file is not packaged in the wheel, so an installed CLI needs its own `data/symbols.yml` (or a configured path) for `BRK.B` to resolve.
+
 ## Command line
 
 After `pip install .`, run `tiferet-stocks exchanges list` with the reference config.yml in the current directory, or use `tiferet-stocks --config /path/to/config.yml exchanges list`. The package installs the console script and code, not a writable configuration or data directory. Provider and watchlist paths are CWD-relative unless absolute paths are configured. The reference provider is Yahoo; the acceptance suite substitutes static prices/history and recorded lookup responses without network access.

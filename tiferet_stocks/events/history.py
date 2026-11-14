@@ -11,8 +11,14 @@ from tiferet.events import DomainEvent
 
 # ** app
 from .. import assets as a
-from ..domain import PriceBar
-from ..interfaces import PriceService
+from ..domain import (
+    YAHOO_CHART,
+    PriceBar,
+    rekey_symbol_id,
+    rekey_symbol_ids,
+    to_provider_ticker,
+)
+from ..interfaces import PriceService, SymbolAliasService
 
 # *** events
 
@@ -25,17 +31,23 @@ class GetHistory(DomainEvent):
     # * attribute: price_service
     price_service: PriceService
 
+    # * attribute: symbol_alias_service
+    symbol_alias_service: SymbolAliasService
+
     # * init
-    def __init__(self, price_service: PriceService) -> None:
+    def __init__(self, price_service: PriceService, symbol_alias_service: SymbolAliasService) -> None:
         '''
-        Initialize the event with the price service.
+        Initialize the event with the price and symbol alias services.
 
         :param price_service: The price service.
         :type price_service: PriceService
+        :param symbol_alias_service: The symbol alias service.
+        :type symbol_alias_service: SymbolAliasService
         '''
 
-        # Store the injected price service.
+        # Store the injected services.
         self.price_service = price_service
+        self.symbol_alias_service = symbol_alias_service
 
     # * method: execute
     @DomainEvent.parameters_required(['symbol', 'start', 'end'])
@@ -77,11 +89,12 @@ class GetHistory(DomainEvent):
             detail='the start date is after the end date',
         )
 
-        # Get the history from the configured provider.
-        history = self.price_service.get_history(symbol, first.isoformat(), last.isoformat())
+        # Get the history from the configured provider under the provider ticker; an id with no alias passes through.
+        aliases = self.symbol_alias_service.get_aliases(YAHOO_CHART)
+        history = self.price_service.get_history(to_provider_ticker(symbol, aliases), first.isoformat(), last.isoformat())
 
         # Raise the catalogued error when the provider failed for the symbol.
-        failure = history.failure
+        failure = rekey_symbol_id(history.failure, aliases) if history.failure else None
         self.verify(
             failure is None,
             a.HISTORY_UNAVAILABLE_ID,
@@ -90,5 +103,5 @@ class GetHistory(DomainEvent):
             failure=failure.model_dump() if failure else None,
         )
 
-        # Return the bars.
-        return history.bars
+        # Return the bars re-keyed to the canonical id.
+        return rekey_symbol_ids(history.bars, aliases)

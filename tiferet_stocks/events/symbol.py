@@ -9,14 +9,48 @@ from typing import Dict, List
 from tiferet.events import DomainEvent
 
 # ** app
+from .. import assets as a
 from ..domain import (
     EXCHANGES,
     NOT_FOUND,
     SYMBOL_MISMATCH,
+    YAHOO_CHART,
     QuoteFailure,
+    Symbol,
+    SymbolAlias,
     SymbolLookup,
+    rekey_symbol_ids,
+    to_provider_tickers,
 )
-from ..interfaces import SymbolLookupService
+from ..interfaces import SymbolAliasService, SymbolLookupService
+from ..mappers import SymbolAggregate
+
+# *** functions
+
+# ** function: apply_symbol_alias
+def apply_symbol_alias(symbol: Symbol, aliases: Dict[str, SymbolAlias]) -> Symbol:
+    '''
+    Return the symbol with its id returned to the canonical ticker when the provider answered under an aliased ticker.
+
+    :param symbol: The symbol as the provider returned it.
+    :type symbol: Symbol
+    :param aliases: The aliases for one provider, keyed by provider ticker.
+    :type aliases: Dict[str, SymbolAlias]
+    :return: The original symbol when no alias applies, otherwise a copy carrying the alias with the canonical id.
+    :rtype: Symbol
+    '''
+
+    # Pass through a symbol whose ticker has no alias (exact match).
+    alias = aliases.get(symbol.id)
+    if alias is None:
+        return symbol
+
+    # Add the alias to a copy of the aggregate and apply it, so only apply_alias sets the id.
+    aggregate = SymbolAggregate.model_validate(symbol.model_dump())
+    if alias not in aggregate.aliases:
+        aggregate.add_alias(alias)
+    aggregate.apply_alias(alias)
+    return aggregate
 
 # *** events
 
@@ -29,17 +63,23 @@ class SymbolLookupEvent(DomainEvent):
     # * attribute: symbol_lookup_service
     symbol_lookup_service: SymbolLookupService
 
+    # * attribute: symbol_alias_service
+    symbol_alias_service: SymbolAliasService
+
     # * init
-    def __init__(self, symbol_lookup_service: SymbolLookupService) -> None:
+    def __init__(self, symbol_lookup_service: SymbolLookupService, symbol_alias_service: SymbolAliasService) -> None:
         '''
-        Initialize the event with the symbol lookup service.
+        Initialize the event with the symbol lookup and symbol alias services.
 
         :param symbol_lookup_service: The symbol lookup service.
         :type symbol_lookup_service: SymbolLookupService
+        :param symbol_alias_service: The symbol alias service.
+        :type symbol_alias_service: SymbolAliasService
         '''
 
-        # Store the injected symbol lookup service.
+        # Store the injected services.
         self.symbol_lookup_service = symbol_lookup_service
+        self.symbol_alias_service = symbol_alias_service
 
     # * method: resolve
     def resolve(self, ids: List[str], exchanges: Dict[str, str] = None) -> SymbolLookup:
@@ -54,22 +94,26 @@ class SymbolLookupEvent(DomainEvent):
         :rtype: SymbolLookup
         '''
 
-        # Look up the distinct requested ids with the provider; a single id string is one id.
+        # Collect the distinct requested ids; a single id string is one id.
         if isinstance(ids, str):
             ids = [ids]
         requested = list(dict.fromkeys(ids))
         exchanges = exchanges or {}
-        lookup = self.symbol_lookup_service.lookup(requested)
 
-        # Keep the provider's warnings and failures for the requested ids.
-        warnings = [warning for warning in lookup.warnings if warning.symbol_id in requested]
-        failures = [failure for failure in lookup.failures if failure.symbol_id in requested]
+        # Read the aliases first, then look up the provider tickers; an id with no alias passes through.
+        aliases = self.symbol_alias_service.get_aliases(YAHOO_CHART)
+        provider_ids = dict(zip(requested, to_provider_tickers(requested, aliases)))
+        lookup = self.symbol_lookup_service.lookup(list(dict.fromkeys(provider_ids.values())))
+
+        # Re-key the provider's warnings and failures to the canonical ids, keeping those for the requested ids.
+        warnings = [warning for warning in rekey_symbol_ids(lookup.warnings, aliases) if warning.symbol_id in requested]
+        failures = [failure for failure in rekey_symbol_ids(lookup.failures, aliases) if failure.symbol_id in requested]
         failed_ids = {failure.symbol_id for failure in failures}
 
         # Check each requested id; nothing requested is silently dropped.
         symbols = {}
         for symbol_id in requested:
-            symbol = lookup.symbols.get(symbol_id)
+            symbol = lookup.symbols.get(provider_ids[symbol_id])
 
             # An id with neither a result nor a failure is reported as not found.
             if symbol is None:
@@ -80,6 +124,9 @@ class SymbolLookupEvent(DomainEvent):
                         detail='The provider returned no result.',
                     ))
                 continue
+
+            # Apply the alias inbound, before the mismatch check, so the id returns to the canonical ticker.
+            symbol = apply_symbol_alias(symbol, aliases)
 
             # A result for a different ticker is a mismatch.
             if symbol.id.upper() != symbol_id.upper():
@@ -116,7 +163,7 @@ class GetSymbol(SymbolLookupEvent):
     @DomainEvent.parameters_required(['id'])
     def execute(self, id: str, exchange: str = None, **kwargs) -> SymbolLookup:
         '''
-        Look up one symbol by id.
+        Look up one symbol by id; a ticker the provider does not know raises SYMBOL_NOT_FOUND.
 
         :param id: The requested symbol id (ticker).
         :type id: str
@@ -129,7 +176,19 @@ class GetSymbol(SymbolLookupEvent):
         '''
 
         # Resolve the single id with its expected exchange.
-        return self.resolve([id], exchanges={id: exchange} if exchange else None)
+        lookup = self.resolve([id], exchanges={id: exchange} if exchange else None)
+
+        # Raise the catalogued error when the provider has no such ticker after the alias and lookup steps.
+        failure = next((failure for failure in lookup.failures if failure.symbol_id == id), None)
+        self.verify(
+            id in lookup.symbols or failure is None or failure.reason != NOT_FOUND,
+            a.SYMBOL_NOT_FOUND_ID,
+            id=id,
+            failure=failure.model_dump() if failure else None,
+        )
+
+        # Return the lookup answer.
+        return lookup
 
 # ** event: resolve_symbols
 class ResolveSymbols(SymbolLookupEvent):

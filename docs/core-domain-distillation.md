@@ -84,13 +84,15 @@ Everything else is identical across the axes.
 
 ## 4. What the domain reads / operates on
 
-The domain operates on four inputs.
+The domain operates on five inputs.
 
 **Requests**: a feature id plus its data, from a program or the CLI. Read requests name one or more tickers, and optionally an expected exchange per ticker or a date range. Change requests name one watchlist and one operation.
 
 **Provider responses**: the source's answer per ticker. The Yahoo chart response carries currency, an exchange code, an instrument type and names in its metadata, and prices in its series. Responses are read once per call and discarded.
 
 **The watchlists file**: YAML or JSON, read through `ConfigurationRepository._load` with a start node (`tiferet/repos/core.py:87`) and written whole through `_save` (`tiferet/repos/core.py:109`). The loader is chosen by extension: `.yaml` or `.yml` gets the YAML loader and `.json` the JSON loader (`tiferet/repos/core.py (57-84)`).
+
+**The symbols file**: YAML or JSON, read-only, holding an `aliases` list of rows (provider id, provider ticker, canonical id). The reference configuration points the symbol alias service at `data/symbols.yml`, CWD-relative. A missing file, a missing list or a provider with no rows is an empty alias map; reads never create the file; parse and access errors stay core errors. The seed is a repository file and is not packaged in the wheel.
 
 **Configuration**: the services, features, errors and CLI commands that wire the package. The provider is one service entry.
 
@@ -103,6 +105,8 @@ Four core conventions give the domain its leverage. The id is the configuration 
 *Ask the provider what each ticker is, and check the answer against what the caller expected.*
 
 Planned events: `GetSymbol` for one ticker and `ResolveSymbols` for many (for example a watchlist's `symbol_ids`), both on the symbol lookup service, plus `ListExchanges`, which returns `EXCHANGES`. ResolveSymbols compares each result with the requested ticker and with an expected exchange when the caller supplies one, and reports a mismatch or an unresolved ticker as a failure. Nothing is stored or overwritten.
+
+Alias order: both lookup events first read the `yahoo_chart` aliases from the symbol alias service, replace a canonical ticker with its provider ticker (`BRK.B` becomes `BRK-B`; a ticker with no alias passes through), and look up the provider tickers. When a result comes back under an aliased provider ticker, the event adds the `SymbolAlias` to the symbol aggregate (`add_alias`) and applies it (`apply_alias`), so the id returns to the canonical ticker before the mismatch check; warnings and failures are re-keyed to the canonical ticker. Lookup keys stay on the canonical ticker. `GetSymbol` raises the catalogued `SYMBOL_NOT_FOUND`, through `verify`, when the provider does not know its one ticker (a `not_found` failure) after those steps; other failures and mismatches stay data. `ResolveSymbols` never raises for a miss.
 
 Verdict: **agnostic** in pipeline; **variable** on axis 1 (who answers) and axis 2 (which ids are possible).
 
@@ -118,7 +122,7 @@ Verdict: **variable** on axes 1 and 2; this is the edge of the domain by design.
 
 *Return the latest quote for each requested ticker, with every miss named.*
 
-Planned event: `GetQuotes` on the price service. The default provider tries each ticker, retries once on failure, and records a quote or a quote failure; endpoint URLs, timeout and retry count are provider parameters that configuration can override. The event raises the catalogued error QUOTES_UNAVAILABLE only when every ticker fails; partial failure is data, not an exception. Symbols in the same response are filled into the quote set.
+Planned event: `GetQuotes` on the price service. The default provider tries each ticker, retries once on failure, and records a quote or a quote failure; endpoint URLs, timeout and retry count are provider parameters that configuration can override. The event raises the catalogued error QUOTES_UNAVAILABLE only when every ticker fails; partial failure is data, not an exception. Symbols in the same response are filled into the quote set. The event applies the same outbound alias as symbol lookup before calling the price service, and re-keys quotes, symbols, warnings and failures to the canonical ticker; the price service itself is alias-free.
 
 Verdict: **agnostic** in pipeline and failure reporting; **variable** on axis 1.
 
@@ -126,7 +130,7 @@ Verdict: **agnostic** in pipeline and failure reporting; **variable** on axis 1.
 
 *Return daily price bars for one ticker between two inclusive ISO dates, oldest first.*
 
-Planned event: `GetHistory` on the price service, in v1. The default provider uses the same chart endpoint with a daily interval. It takes a single symbol: when the provider fails for that symbol (not found, a request error or a malformed payload) it raises the catalogued `HISTORY_UNAVAILABLE`, and a valid date range with no trading days returns an empty list. It stores nothing.
+Planned event: `GetHistory` on the price service, in v1. The default provider uses the same chart endpoint with a daily interval. It takes a single symbol: when the provider fails for that symbol (not found, a request error or a malformed payload) it raises the catalogued `HISTORY_UNAVAILABLE`, and a valid date range with no trading days returns an empty list. The event applies the outbound alias to the one ticker and returns bars re-keyed to the canonical ticker. It stores nothing.
 
 Verdict: **agnostic** in pipeline; **variable** on axis 1.
 
@@ -206,7 +210,7 @@ Entanglement inventory (risks in the planned shape):
 - Model errors are not catalogued in core. `ModelError` is deliberately not a `TiferetError` and leaks as an unhandled exception (`tiferet/domain/core.py (87-96)`). If the watchlist aggregate raises the WATCHLIST_* errors as model errors, a duplicate symbol or a bad index reaches the user as a crash, not a catalogued message. The events must check first with `verify`, as core's error events do (`tiferet/events/error.py (74-80)`), leaving the aggregate's own raise as a last-line guard.
 - A misnamed watchlists file extension raises UNSUPPORTED_CONFIG_FILE_TYPE as a service error (`tiferet/repos/core.py (78-84)`), which is also never catalogued. That is a configuration fault surfacing as a crash; acceptable, but it should be documented.
 - Every save rewrites the whole file (`tiferet/repos/error.py (119-125)`) with no lock, so two writers can lose a change. The YAML loader writes with `yaml.safe_dump` (`tiferet/utils/yaml.py (1075-1092)`), which drops comments in a hand-edited starter file on first save.
-- One provider class implements both the price service and the symbol lookup service, because one response carries both. Swapping the price provider in configuration does not swap lookups; the two service entries must be changed together or deliberately split.
+- The Yahoo price repository and the Yahoo symbol repository share one chart client (`YahooChartClient`), so both read the same endpoint, but they are separate service entries. Swapping the price provider in configuration does not swap lookups, and the alias service is a third, independent entry.
 - The exchange constraint is a `Literal` evaluated when the class is defined (the pattern at `tiferet/domain/feature.py:144`), so adding an exchange is a code change and a release, never configuration. That is intended, but it ties axis 2 to the release cycle.
 - An empty exchange is overloaded (fund versus unmapped listing). The warning is the only carrier of the raw code, and it lives in the call's answer, not on the symbol; a consumer that keeps symbols but drops warnings loses the distinction.
 - Domain objects coerce numbers to strings (`tiferet/domain/core.py:235`). Numeric provider fields must be declared as numbers on quotes and bars, or a price could arrive as a string.

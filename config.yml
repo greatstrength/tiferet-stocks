@@ -12,13 +12,19 @@ services:
     class_name: WatchlistConfigRepository
     params:
       watchlist_config: data/watchlists.yml
+  # symbol_alias_service must stay listed before the symbol, quote and history events that inject it (DI order).
+  symbol_alias_service:
+    module_path: tiferet_stocks.repos.symbol
+    class_name: SymbolAliasRepository
+    params:
+      symbol_config: data/symbols.yml
   symbol_lookup_service:
-    module_path: tiferet_stocks.repos.yahoo
-    class_name: YahooChartPriceRepository
+    module_path: tiferet_stocks.repos.symbol
+    class_name: YahooChartSymbolRepository
     params:
       timeout: '10'
       retries: '1'
-  # Swap providers by changing this entry; YahooChartPriceRepository also backs symbol_lookup_service, so change both together.
+  # Swap price providers by changing this entry; symbol_lookup_service is wired independently.
   # price_service must stay listed before get_quotes_event and get_history_event, or the feature step fails to load (DI order).
   price_service:
     module_path: tiferet_stocks.repos.yahoo
@@ -166,6 +172,11 @@ errors:
     message:
       - lang: en_US
         text: 'No quotes are available for the requested symbols: {symbols}.'
+  SYMBOL_NOT_FOUND:
+    name: Symbol Not Found
+    message:
+      - lang: en_US
+        text: 'Symbol not found: {id}.'
   WATCHLIST_NOT_FOUND:
     name: Watchlist Not Found
     message:

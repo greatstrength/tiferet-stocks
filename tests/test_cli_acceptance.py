@@ -213,7 +213,6 @@ def test_history_oldest_first_and_empty_trading_range(console):
 # ** test: symbol_reports_preserve_messages
 @pytest.mark.parametrize('argv, required', [
     (['symbols', 'get', 'SPY'], ['SPY', 'unmapped_exchange']),
-    (['symbols', 'get', 'MISSING'], ['MISSING', 'not_found', 'Recorded symbol missing.']),
     (['symbols', 'resolve', 'SPY', 'MISSING'], ['SPY', 'MISSING', 'unmapped_exchange', 'not_found']),
     (['symbols', 'resolve', 'SPY', '--expected-exchanges', 'SPY=NASDAQ'], ['symbol_mismatch', 'unmapped_exchange', 'expected exchange NASDAQ']),
 ])
@@ -296,6 +295,7 @@ def test_cli_indexes_and_rejected_write_invariance(console, operation, flag, sym
     (['quotes', 'get', 'MISSING'], 'QUOTES_UNAVAILABLE'),
     (['quotes', 'history', 'MISSING', '--start', '2026-10-19', '--end', '2026-10-23'], 'HISTORY_UNAVAILABLE'),
     (['quotes', 'history', 'SPY', '--start', 'bad', '--end', '2026-10-23'], 'INVALID_HISTORY_RANGE'),
+    (['symbols', 'get', 'MISSING'], 'SYMBOL_NOT_FOUND'),
     (['watchlists', 'get', 'absent'], 'WATCHLIST_NOT_FOUND'),
     (['watchlists', 'create', 'etfs', '--name', 'Duplicate'], 'WATCHLIST_EXISTS'),
     (['watchlists', 'create', 'new', '--name', 'New', '--symbol-ids', 'SPY', 'SPY'], 'WATCHLIST_SYMBOL_EXISTS'),

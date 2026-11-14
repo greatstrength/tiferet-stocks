@@ -12,7 +12,7 @@ from urllib import error as url_error
 from urllib import parse, request
 
 # ** app
-from ..interfaces import PriceService, SymbolLookupService
+from ..interfaces import PriceService
 from ..mappers import (
     NYSE,
     NASDAQ,
@@ -37,7 +37,6 @@ from ..mappers import (
     Quotations,
     PriceBar,
     PriceHistoryAggregate,
-    SymbolLookup,
     SymbolWarning,
     SymbolAggregate,
     SymbolYahooObject,
@@ -85,19 +84,17 @@ DEFAULT_SOURCE = 'yahoo_chart'
 # ** constant: user_agent
 USER_AGENT = 'Mozilla/5.0 (compatible; tiferet-stocks)'
 
-# *** repos
+# *** classes
 
-# ** repo: yahoo_chart_price_repository
-class YahooChartPriceRepository(SymbolLookupService, PriceService):
+# ** class: yahoo_chart_client
+class YahooChartClient(object):
     '''
-    Market data provider backed by the Yahoo chart endpoint.
+    Shared Yahoo chart endpoint client: fetches and parses chart results and translates their metadata into symbols.
+    Used by the Yahoo price repository and the Yahoo symbol repository; it takes whatever id it is given and does not raise.
     '''
 
     # * attribute: quote_url
     quote_url: str
-
-    # * attribute: history_url
-    history_url: str
 
     # * attribute: timeout
     timeout: float
@@ -109,11 +106,9 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
     def __init__(self,
                  quote_url: str = DEFAULT_QUOTE_URL,
                  timeout: str = DEFAULT_TIMEOUT,
-                 retries: str = DEFAULT_RETRIES,
-                 source: str = DEFAULT_SOURCE,
-                 history_url: str = DEFAULT_HISTORY_URL) -> None:
+                 retries: str = DEFAULT_RETRIES) -> None:
         '''
-        Initialize the Yahoo chart repository.
+        Initialize the Yahoo chart client.
 
         :param quote_url: The chart endpoint URL template, with a {symbol} placeholder.
         :type quote_url: str
@@ -121,18 +116,12 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         :type timeout: str
         :param retries: The number of retries per symbol after a failed attempt; configuration may pass a string.
         :type retries: str
-        :param source: The provider id stamped on each quote.
-        :type source: str
-        :param history_url: The daily chart endpoint URL template, with {symbol}, {period1} and {period2} placeholders.
-        :type history_url: str
         '''
 
         # Store the endpoint and convert the numeric parameters.
         self.quote_url = quote_url
         self.timeout = float(timeout)
         self.retries = max(0, int(retries))
-        self.source = source
-        self.history_url = history_url
 
     # * method: fetch_chart
     def fetch_chart(self, symbol_id: str, url: str = None) -> Tuple[Dict[str, Any] | None, QuoteFailure | None, int]:
@@ -265,30 +254,46 @@ class YahooChartPriceRepository(SymbolLookupService, PriceService):
         # Return the symbol and its warnings.
         return symbol, warnings
 
-    # * method: lookup
-    def lookup(self, ids: List[str]) -> SymbolLookup:
+# *** repos
+
+# ** repo: yahoo_chart_price_repository
+class YahooChartPriceRepository(YahooChartClient, PriceService):
+    '''
+    Price provider backed by the Yahoo chart endpoint. It is alias-free: it takes whatever id it is given.
+    '''
+
+    # * attribute: history_url
+    history_url: str
+
+    # * attribute: source
+    source: str
+
+    # * init
+    def __init__(self,
+                 quote_url: str = DEFAULT_QUOTE_URL,
+                 timeout: str = DEFAULT_TIMEOUT,
+                 retries: str = DEFAULT_RETRIES,
+                 source: str = DEFAULT_SOURCE,
+                 history_url: str = DEFAULT_HISTORY_URL) -> None:
         '''
-        Look up each requested symbol id with the Yahoo chart endpoint.
+        Initialize the Yahoo chart price repository.
 
-        :param ids: The requested symbol ids (tickers).
-        :type ids: List[str]
-        :return: The symbols by requested id, with warnings and failures.
-        :rtype: SymbolLookup
+        :param quote_url: The chart endpoint URL template, with a {symbol} placeholder.
+        :type quote_url: str
+        :param timeout: The request timeout in seconds; configuration may pass a string.
+        :type timeout: str
+        :param retries: The number of retries per symbol after a failed attempt; configuration may pass a string.
+        :type retries: str
+        :param source: The provider id stamped on each quote.
+        :type source: str
+        :param history_url: The daily chart endpoint URL template, with {symbol}, {period1} and {period2} placeholders.
+        :type history_url: str
         '''
 
-        # Fetch and translate each distinct id in request order.
-        symbols, warnings, failures = {}, [], []
-        for symbol_id in dict.fromkeys(ids):
-            result, failure, _ = self.fetch_chart(symbol_id)
-            if failure:
-                failures.append(failure)
-                continue
-            symbol, symbol_warnings = self.translate_symbol(symbol_id, result['meta'])
-            symbols[symbol_id] = symbol
-            warnings.extend(symbol_warnings)
-
-        # Return the lookup answer.
-        return SymbolLookup(symbols=symbols, warnings=warnings, failures=failures)
+        # Set up the shared chart client, then the price-only parameters.
+        YahooChartClient.__init__(self, quote_url=quote_url, timeout=timeout, retries=retries)
+        self.source = source
+        self.history_url = history_url
 
     # * method: translate_quote
     def translate_quote(self,

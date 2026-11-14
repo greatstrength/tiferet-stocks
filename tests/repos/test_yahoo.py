@@ -8,7 +8,6 @@ import json
 import os
 from datetime import datetime, timezone
 import socket
-from http import client as http_client
 from typing import Any, List
 from unittest import mock
 from urllib import error as url_error
@@ -165,294 +164,6 @@ def test_init_converts_string_params(repo: YahooChartPriceRepository) -> None:
 
     assert repo.timeout == 5.0
     assert repo.retries == 1
-
-# ** test: lookup_recorded_payloads
-@pytest.mark.parametrize('symbol_id, exchange, asset_type', [
-    ('AAPL', 'NASDAQ', 'equity'),
-    ('QQQ', 'NASDAQ', 'etf'),
-    ('PLUG', 'NASDAQ', 'equity'),
-    ('IBM', 'NYSE', 'equity'),
-    ('SPY', 'NYSE_ARCA', 'etf'),
-    ('XLK', 'NYSE_ARCA', 'etf'),
-    ('ARKK', 'CBOE_BZX', 'etf'),
-    ('IMO', 'NYSE_AMERICAN', 'equity'),
-])
-def test_lookup_recorded_payloads(repo: YahooChartPriceRepository,
-                                  urlopen: mock.Mock,
-                                  symbol_id: str,
-                                  exchange: str,
-                                  asset_type: str) -> None:
-    '''
-    Test that recorded payloads translate to domain exchange ids and asset types with no warning.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    :param symbol_id: The requested symbol id.
-    :type symbol_id: str
-    :param exchange: The expected exchange id.
-    :type exchange: str
-    :param asset_type: The expected asset type.
-    :type asset_type: str
-    '''
-
-    urlopen.return_value = make_response(read_payload(symbol_id.lower()))
-
-    lookup = repo.lookup([symbol_id])
-
-    assert lookup.symbols[symbol_id].exchange == exchange
-    assert lookup.symbols[symbol_id].asset_type == asset_type
-    assert lookup.warnings == []
-    assert lookup.failures == []
-
-# ** test: lookup_unmapped_exchange
-def test_lookup_unmapped_exchange(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that an unmapped exchange code gives an empty exchange and one warning carrying the raw code.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.return_value = make_response(read_payload('tcehy'))
-
-    lookup = repo.lookup(['TCEHY'])
-
-    assert lookup.symbols['TCEHY'].exchange is None
-    assert lookup.symbols['TCEHY'].asset_type == 'equity'
-    assert len(lookup.warnings) == 1
-    assert lookup.warnings[0].reason == 'unmapped_exchange'
-    assert lookup.warnings[0].detail == 'PNK'
-    assert lookup.failures == []
-
-# ** test: lookup_money_market_fund
-def test_lookup_money_market_fund(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that a money market fund gets an empty exchange and no warning.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.return_value = make_response(read_payload('frsxx'))
-
-    lookup = repo.lookup(['FRSXX'])
-
-    assert lookup.symbols['FRSXX'].exchange is None
-    assert lookup.symbols['FRSXX'].asset_type == 'money_market_fund'
-    assert lookup.warnings == []
-
-# ** test: lookup_unmapped_asset_type
-def test_lookup_unmapped_asset_type(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that an unmapped instrument type gives an empty asset type and an unmapped_asset_type warning.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    payload = json.loads(read_payload('aapl'))
-    payload['chart']['result'][0]['meta']['instrumentType'] = 'FUTURE'
-    urlopen.return_value = make_response(json.dumps(payload).encode())
-
-    lookup = repo.lookup(['AAPL'])
-
-    assert lookup.symbols['AAPL'].asset_type is None
-    assert lookup.symbols['AAPL'].exchange == 'NASDAQ'
-    assert [(w.reason, w.detail) for w in lookup.warnings] == [('unmapped_asset_type', 'FUTURE')]
-
-# ** test: lookup_not_found
-def test_lookup_not_found(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that a 404 is a not_found failure after one attempt, with no retry.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = make_http_error(404)
-
-    lookup = repo.lookup(['ZZZZQ'])
-
-    assert lookup.symbols == {}
-    assert lookup.failures[0].reason == 'not_found'
-    assert lookup.failures[0].attempts == 1
-    assert urlopen.call_count == 1
-
-# ** test: lookup_timeout_then_success
-def test_lookup_timeout_then_success(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that a timeout followed by success returns the symbol, proving the single retry.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = [socket.timeout('timed out'), make_response(read_payload('aapl'))]
-
-    lookup = repo.lookup(['AAPL'])
-
-    assert lookup.symbols['AAPL'].exchange == 'NASDAQ'
-    assert lookup.failures == []
-    assert urlopen.call_count == 2
-
-# ** test: lookup_timeout_exhausted
-def test_lookup_timeout_exhausted(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that two timeouts give a timeout failure with two attempts.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = [url_error.URLError(socket.timeout('timed out')), socket.timeout('timed out')]
-
-    lookup = repo.lookup(['AAPL'])
-
-    assert lookup.failures[0].reason == 'timeout'
-    assert lookup.failures[0].attempts == 2
-
-# ** test: lookup_http_error
-def test_lookup_http_error(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that repeated server errors give an http_error failure carrying the status.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = [make_http_error(500), make_http_error(503)]
-
-    lookup = repo.lookup(['AAPL'])
-
-    assert lookup.failures[0].reason == 'http_error'
-    assert lookup.failures[0].detail == 'HTTP 503'
-    assert lookup.failures[0].attempts == 2
-
-# ** test: lookup_malformed_json
-@pytest.mark.parametrize('body', [b'not json', b'{"chart": {"result": [{}]}}', b'{"chart": {"result": null, "error": null}}'])
-def test_lookup_malformed_json(repo: YahooChartPriceRepository, urlopen: mock.Mock, body: bytes) -> None:
-    '''
-    Test that a malformed body is a bad_payload failure.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    :param body: The malformed response body.
-    :type body: bytes
-    '''
-
-    urlopen.return_value = make_response(body)
-
-    lookup = repo.lookup(['AAPL'])
-
-    assert lookup.symbols == {}
-    assert lookup.failures[0].reason == 'bad_payload'
-
-# ** test: lookup_not_found_body
-def test_lookup_not_found_body(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that a Not Found chart error body is a not_found failure.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.return_value = make_response(b'{"chart": {"result": null, "error": {"code": "Not Found", "description": "No data found"}}}')
-
-    lookup = repo.lookup(['ZZZZQ'])
-
-    assert lookup.failures[0].reason == 'not_found'
-    assert lookup.failures[0].detail == 'No data found'
-
-# ** test: lookup_many
-def test_lookup_many(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that a batch returns every id as a result or a failure, and one failure does not fail the batch.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = [make_response(read_payload('spy')), make_http_error(404), make_response(read_payload('tcehy'))]
-
-    lookup = repo.lookup(['SPY', 'ZZZZQ', 'TCEHY', 'SPY'])
-
-    assert list(lookup.symbols) == ['SPY', 'TCEHY']
-    assert [failure.symbol_id for failure in lookup.failures] == ['ZZZZQ']
-    assert urlopen.call_count == 3
-
-# ** test: lookup_connection_error_then_success
-@pytest.mark.parametrize('error', [
-    http_client.RemoteDisconnected('Remote end closed connection without response'),
-    ConnectionResetError('Connection reset by peer'),
-    http_client.IncompleteRead(b'partial'),
-])
-def test_lookup_connection_error_then_success(repo: YahooChartPriceRepository,
-                                              urlopen: mock.Mock,
-                                              error: Exception) -> None:
-    '''
-    Test that a dropped or truncated response is retried and does not abort the lookup.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    :param error: The connection-level error raised on the first attempt.
-    :type error: Exception
-    '''
-
-    urlopen.side_effect = [error, make_response(read_payload('aapl'))]
-
-    lookup = repo.lookup(['AAPL'])
-
-    assert lookup.symbols['AAPL'].exchange == 'NASDAQ'
-    assert lookup.failures == []
-    assert urlopen.call_count == 2
-
-# ** test: lookup_connection_error_exhausted
-def test_lookup_connection_error_exhausted(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that repeated connection errors become an http_error failure while the rest of the batch resolves.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = [
-        http_client.RemoteDisconnected('closed'),
-        ConnectionResetError('reset'),
-        make_response(read_payload('spy')),
-    ]
-
-    lookup = repo.lookup(['AAPL', 'SPY'])
-
-    assert list(lookup.symbols) == ['SPY']
-    assert lookup.failures[0].symbol_id == 'AAPL'
-    assert lookup.failures[0].reason == 'http_error'
-    assert lookup.failures[0].attempts == 2
 
 # ** test: get_quotes_recorded_payload
 def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
@@ -723,6 +434,31 @@ def test_get_history_recorded_payload(repo: YahooChartPriceRepository, urlopen: 
     assert isinstance(bar.volume, int) and not isinstance(bar.volume, bool)
     assert bar.close == 339.5
     assert bar.volume == 35851400
+
+# ** test: get_history_recorded_brk_b
+def test_get_history_recorded_brk_b(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that the recorded BRK-B history payload yields bars under the provider ticker, oldest first.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.return_value = make_response(read_payload('brk-b_history'))
+
+    history = repo.get_history('BRK-B', '2026-10-20', '2026-10-22')
+
+    assert history.failure is None
+    assert [bar.date for bar in history.bars] == ['2026-10-20', '2026-10-21', '2026-10-22']
+    bar = history.bars[0]
+    assert bar.symbol_id == 'BRK-B'
+    assert all(isinstance(value, float) for value in (bar.open, bar.high, bar.low, bar.close, bar.adj_close))
+    assert isinstance(bar.volume, int) and not isinstance(bar.volume, bool)
+    assert bar.close == 539.8200073242188
+    assert bar.volume == 5311100
+    assert 'BRK-B' in urlopen.call_args[0][0].full_url
 
 # ** test: get_history_request_params
 def test_get_history_request_params(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:

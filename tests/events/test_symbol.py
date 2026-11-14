@@ -4,6 +4,7 @@
 
 # ** core
 import inspect
+from typing import Dict
 from unittest import mock
 
 # ** infra
@@ -16,6 +17,7 @@ from tiferet_stocks.domain import (
     EXCHANGES,
     QuoteFailure,
     Symbol,
+    SymbolAlias,
     SymbolLookup,
     SymbolWarning,
 )
@@ -25,7 +27,7 @@ from tiferet_stocks.events import (
     ResolveSymbols,
     SymbolLookupEvent,
 )
-from tiferet_stocks.interfaces import SymbolLookupService
+from tiferet_stocks.interfaces import SymbolAliasService, SymbolLookupService
 
 # *** fixtures
 
@@ -47,6 +49,36 @@ def symbol_lookup_service() -> mock.Mock:
     )
     return service
 
+# *** functions
+
+# ** function: alias_service
+def alias_service(aliases: Dict[str, SymbolAlias] = None) -> mock.Mock:
+    '''
+    A mock symbol alias service returning the given yahoo_chart aliases, or an empty map.
+
+    :param aliases: The aliases keyed by provider ticker.
+    :type aliases: Dict[str, SymbolAlias]
+    :return: The mock symbol alias service.
+    :rtype: mock.Mock
+    '''
+
+    # Return data only, as the configured repository does.
+    service = mock.Mock(spec=SymbolAliasService)
+    service.get_aliases.return_value = aliases or {}
+    return service
+
+# ** function: brk_aliases
+def brk_aliases() -> Dict[str, SymbolAlias]:
+    '''
+    The yahoo_chart alias map for BRK.B, keyed by provider ticker.
+
+    :return: The alias map.
+    :rtype: Dict[str, SymbolAlias]
+    '''
+
+    # Build and return the map.
+    return {'BRK-B': SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')}
+
 # *** tests
 
 # ** test: get_symbol
@@ -58,7 +90,7 @@ def test_get_symbol(symbol_lookup_service: mock.Mock) -> None:
     :type symbol_lookup_service: mock.Mock
     '''
 
-    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service}, id='AAPL', exchange='NASDAQ')
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='AAPL', exchange='NASDAQ')
 
     assert lookup.symbols['AAPL'].exchange == 'NASDAQ'
     assert lookup.failures == []
@@ -74,7 +106,7 @@ def test_get_symbol_exchange_mismatch(symbol_lookup_service: mock.Mock) -> None:
     :type symbol_lookup_service: mock.Mock
     '''
 
-    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service}, id='AAPL', exchange='NYSE')
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='AAPL', exchange='NYSE')
 
     assert lookup.symbols == {}
     assert lookup.failures[0].reason == 'symbol_mismatch'
@@ -91,7 +123,7 @@ def test_get_symbol_ticker_mismatch(symbol_lookup_service: mock.Mock) -> None:
 
     symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BRK.B': Symbol(id='BRK-B', exchange='NYSE')})
 
-    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service}, id='BRK.B')
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='BRK.B')
 
     assert lookup.symbols == {}
     assert lookup.failures[0].reason == 'symbol_mismatch'
@@ -108,7 +140,7 @@ def test_get_symbol_ticker_case_insensitive(symbol_lookup_service: mock.Mock) ->
 
     symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'aapl': Symbol(id='AAPL', exchange='NASDAQ')})
 
-    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service}, id='aapl')
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='aapl')
 
     assert lookup.symbols['aapl'].id == 'AAPL'
     assert lookup.failures == []
@@ -123,7 +155,7 @@ def test_get_symbol_requires_id(symbol_lookup_service: mock.Mock) -> None:
     '''
 
     with pytest.raises(TiferetError):
-        DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service}, id=None)
+        DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id=None)
 
 # ** test: resolve_symbols
 def test_resolve_symbols(symbol_lookup_service: mock.Mock) -> None:
@@ -136,7 +168,7 @@ def test_resolve_symbols(symbol_lookup_service: mock.Mock) -> None:
 
     lookup = DomainEvent.handle(
         ResolveSymbols,
-        dependencies={'symbol_lookup_service': symbol_lookup_service},
+        dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()},
         ids=['AAPL', 'SPY', 'ZZZZQ', 'MISSING', 'AAPL'],
         exchanges={'SPY': 'NYSE'},
     )
@@ -160,7 +192,7 @@ def test_resolve_symbols_requires_ids(symbol_lookup_service: mock.Mock) -> None:
     '''
 
     with pytest.raises(TiferetError):
-        DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service}, ids=None)
+        DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, ids=None)
 
 # ** test: symbol_events_depend_only_on_lookup
 def test_symbol_events_depend_only_on_lookup() -> None:
@@ -170,7 +202,7 @@ def test_symbol_events_depend_only_on_lookup() -> None:
 
     params = list(inspect.signature(SymbolLookupEvent.__init__).parameters)
 
-    assert params == ['self', 'symbol_lookup_service']
+    assert params == ['self', 'symbol_lookup_service', 'symbol_alias_service']
     assert GetSymbol.__init__ is SymbolLookupEvent.__init__
     assert ResolveSymbols.__init__ is SymbolLookupEvent.__init__
 
@@ -183,7 +215,7 @@ def test_resolve_symbols_single_string(symbol_lookup_service: mock.Mock) -> None
     :type symbol_lookup_service: mock.Mock
     '''
 
-    lookup = DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service}, ids='AAPL')
+    lookup = DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, ids='AAPL')
 
     assert list(lookup.symbols) == ['AAPL']
     symbol_lookup_service.lookup.assert_called_once_with(['AAPL'])
@@ -198,7 +230,7 @@ def test_resolve_symbols_writes_no_file(symbol_lookup_service: mock.Mock) -> Non
     '''
 
     with mock.patch('builtins.open') as patched_open:
-        DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service}, ids=['AAPL', 'SPY'])
+        DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, ids=['AAPL', 'SPY'])
 
     patched_open.assert_not_called()
 
@@ -213,6 +245,152 @@ def test_list_exchanges() -> None:
     assert exchanges == EXCHANGES
     assert exchanges is not EXCHANGES
 
+# ** test: get_symbol_brk_b_alias
+def test_get_symbol_brk_b_alias(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that a canonical BRK.B request is looked up as BRK-B and the alias is applied before the mismatch check.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(
+        symbols={'BRK-B': Symbol(id='BRK-B', exchange='NYSE', asset_type='equity')},
+        warnings=[SymbolWarning(symbol_id='BRK-B', reason='unmapped_asset_type', detail='TEST')],
+    )
+    aliases = alias_service(brk_aliases())
+
+    lookup = DomainEvent.handle(
+        GetSymbol,
+        dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': aliases},
+        id='BRK.B',
+        exchange='NYSE',
+    )
+
+    aliases.get_aliases.assert_called_once_with('yahoo_chart')
+    symbol_lookup_service.lookup.assert_called_once_with(['BRK-B'])
+    assert list(lookup.symbols) == ['BRK.B']
+    assert lookup.symbols['BRK.B'].id == 'BRK.B'
+    assert lookup.symbols['BRK.B'].aliases == list(brk_aliases().values())
+    assert lookup.warnings[0].symbol_id == 'BRK.B'
+    assert lookup.failures == []
+
+# ** test: resolve_symbols_brk_b_alias
+def test_resolve_symbols_brk_b_alias(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that ResolveSymbols applies the alias for BRK.B, leaves an unaliased control unchanged, and reports a miss as data.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(
+        symbols={
+            'BRK-B': Symbol(id='BRK-B', exchange='NYSE', asset_type='equity'),
+            'AAPL': Symbol(id='AAPL', exchange='NASDAQ', asset_type='equity'),
+        },
+        failures=[QuoteFailure(symbol_id='ZZZZQ', reason='not_found', detail='HTTP 404')],
+    )
+
+    lookup = DomainEvent.handle(
+        ResolveSymbols,
+        dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service(brk_aliases())},
+        ids=['BRK.B', 'AAPL', 'ZZZZQ'],
+    )
+
+    symbol_lookup_service.lookup.assert_called_once_with(['BRK-B', 'AAPL', 'ZZZZQ'])
+    assert list(lookup.symbols) == ['BRK.B', 'AAPL']
+    assert lookup.symbols['AAPL'].aliases == []
+    assert [(f.symbol_id, f.reason) for f in lookup.failures] == [('ZZZZQ', 'not_found')]
+
+# ** test: resolve_symbols_brk_b_failure_rekeyed
+def test_resolve_symbols_brk_b_failure_rekeyed(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that a provider failure for the provider ticker is reported under the canonical id.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(failures=[QuoteFailure(symbol_id='BRK-B', reason='timeout', attempts=2)])
+
+    lookup = DomainEvent.handle(
+        ResolveSymbols,
+        dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service(brk_aliases())},
+        ids=['BRK.B'],
+    )
+
+    assert lookup.symbols == {}
+    assert [(f.symbol_id, f.reason, f.attempts) for f in lookup.failures] == [('BRK.B', 'timeout', 2)]
+
+# ** test: resolve_symbols_alias_for_other_ticker_mismatch
+def test_resolve_symbols_alias_for_other_ticker_mismatch(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that a provider answer for an unexpected ticker is not aliased and stays a symbol_mismatch.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BRK-B': Symbol(id='BRK-A', exchange='NYSE')})
+
+    lookup = DomainEvent.handle(
+        ResolveSymbols,
+        dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service(brk_aliases())},
+        ids=['BRK.B'],
+    )
+
+    assert lookup.symbols == {}
+    assert lookup.failures[0].reason == 'symbol_mismatch'
+    assert lookup.failures[0].detail == 'expected ticker BRK.B, actual ticker BRK-A'
+
+# ** test: get_symbol_not_found
+@pytest.mark.parametrize('failures', [
+    [QuoteFailure(symbol_id='ZZZZQ', reason='not_found', detail='HTTP 404')],
+    [],
+])
+def test_get_symbol_not_found(symbol_lookup_service: mock.Mock, failures: list) -> None:
+    '''
+    Test that GetSymbol raises SYMBOL_NOT_FOUND when the provider has no such ticker after the alias step.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    :param failures: The provider failures for the lookup.
+    :type failures: list
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(failures=failures)
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            GetSymbol,
+            dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service(brk_aliases())},
+            id='ZZZZQ',
+        )
+
+    assert exc_info.value.error_code == 'SYMBOL_NOT_FOUND'
+    assert exc_info.value.kwargs['id'] == 'ZZZZQ'
+    assert exc_info.value.kwargs['failure']['reason'] == 'not_found'
+
+# ** test: get_symbol_other_failures_are_data
+@pytest.mark.parametrize('reason', ['timeout', 'http_error', 'bad_payload'])
+def test_get_symbol_other_failures_are_data(symbol_lookup_service: mock.Mock, reason: str) -> None:
+    '''
+    Test that GetSymbol still returns a provider failure that is not not_found as data.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    :param reason: The provider failure reason.
+    :type reason: str
+    '''
+
+    symbol_lookup_service.lookup.return_value = SymbolLookup(failures=[QuoteFailure(symbol_id='AAPL', reason=reason)])
+
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='AAPL')
+
+    assert lookup.symbols == {}
+    assert lookup.failures[0].reason == reason
+
 # *** testers
 
 # ** tester: test_get_symbol_event
@@ -223,6 +401,10 @@ def test_list_exchanges() -> None:
         'symbol_lookup_service': {
             'module_path': 'tiferet_stocks.interfaces',
             'class_name': 'SymbolLookupService',
+        },
+        'symbol_alias_service': {
+            'module_path': 'tiferet_stocks.interfaces',
+            'class_name': 'SymbolAliasService',
         },
     },
     sample_kwargs={'id': 'AAPL'},
@@ -249,6 +431,10 @@ class TestGetSymbolEvent:
         'symbol_lookup_service': {
             'module_path': 'tiferet_stocks.interfaces',
             'class_name': 'SymbolLookupService',
+        },
+        'symbol_alias_service': {
+            'module_path': 'tiferet_stocks.interfaces',
+            'class_name': 'SymbolAliasService',
         },
     },
     sample_kwargs={'ids': ['AAPL']},

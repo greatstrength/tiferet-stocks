@@ -1,0 +1,4 @@
+aliases:
+  - provider: yahoo_chart
+    provider_ticker: BRK-B
+    canonical_id: BRK.B

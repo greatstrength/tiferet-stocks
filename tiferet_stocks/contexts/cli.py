@@ -50,7 +50,9 @@ def build_symbol_rows(result: Quotations | SymbolLookup) -> List[Dict[str, Any]]
             for key, value in quote.model_dump(exclude_none=True).items():
                 row['quote_symbol_id' if key == 'symbol_id' else key] = value
         if symbol is not None:
-            row.update({'resolved_symbol_id' if key == 'id' else f'symbol_{key}': value for key, value in symbol.model_dump(exclude_none=True).items()})
+            row.update({'resolved_symbol_id' if key == 'id' else f'symbol_{key}': value for key, value in symbol.model_dump(exclude_none=True, exclude={'aliases'}).items()})
+            for alias in symbol.aliases:
+                row[f'symbol_alias_{alias.provider}'] = alias.provider_ticker
         if isinstance(result, Quotations) and result.fetched_at is not None:
             row['fetched_at'] = result.fetched_at
 

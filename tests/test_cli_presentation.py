@@ -9,7 +9,7 @@ from tiferet.domain.cli import CliOutputRecord, CliRecordList
 
 # ** app
 from tiferet_stocks.contexts.cli import StocksCliRequestContext, build_symbol_rows
-from tiferet_stocks.domain import PriceBar, Quote, QuoteFailure, Quotations, Symbol, SymbolLookup, SymbolWarning, Watchlist
+from tiferet_stocks.domain import PriceBar, Quote, QuoteFailure, Quotations, Symbol, SymbolAlias, SymbolLookup, SymbolWarning, Watchlist
 
 # *** tests
 
@@ -41,7 +41,8 @@ def test_quote_rows_retain_complete_records() -> None:
     assert row['symbol_currency'] == 'CAD'
     for key, value in result.quotes['SPY'].model_dump(exclude_none=True).items():
         assert row['quote_symbol_id' if key == 'symbol_id' else key] == value
-    for key, value in result.symbols['SPY'].model_dump(exclude_none=True).items():
+    assert 'symbol_aliases' not in row
+    for key, value in result.symbols['SPY'].model_dump(exclude_none=True, exclude={'aliases'}).items():
         assert row['resolved_symbol_id' if key == 'id' else f'symbol_{key}'] == value
     for label, records in [('failure', result.failures[:2]), ('warning', result.warnings)]:
         for number, record in enumerate(records, start=1):
@@ -85,6 +86,24 @@ def test_lookup_rows_include_warning_only_and_failure_only_symbols() -> None:
     assert rows[1]['failure_1_reason'] == 'not_found'
     assert rows[2]['warning_1_reason'] == 'unmapped_exchange'
     assert rows[2]['warning_1_detail'] == 'PNK'
+
+# ** test: lookup_rows_show_alias_as_scalar_column
+def test_lookup_rows_show_alias_as_scalar_column() -> None:
+    '''
+    Show an applied alias as one scalar provider-ticker column per provider, not a nested list cell.
+
+    :return: None; assertions enforce the contract.
+    :rtype: None
+    '''
+
+    alias = SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')
+    result = SymbolLookup(symbols={'BRK.B': Symbol(id='BRK.B', exchange='NYSE', aliases=[alias])})
+    rows = build_symbol_rows(result)
+
+    assert rows[0]['symbol_id'] == 'BRK.B'
+    assert rows[0]['resolved_symbol_id'] == 'BRK.B'
+    assert rows[0]['symbol_alias_yahoo_chart'] == 'BRK-B'
+    assert 'symbol_aliases' not in rows[0]
 
 # ** test: native_symbol_tables_preserve_raw_result
 @pytest.mark.parametrize('result', [

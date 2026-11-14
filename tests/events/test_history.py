@@ -5,6 +5,7 @@
 # ** core
 import inspect
 from datetime import date
+from typing import Dict
 from unittest import mock
 
 # ** infra
@@ -13,10 +14,10 @@ from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
-from tiferet_stocks.domain import PriceBar, QuoteFailure
+from tiferet_stocks.domain import PriceBar, QuoteFailure, SymbolAlias
 from tiferet_stocks.mappers import PriceHistoryAggregate
 from tiferet_stocks.events import GetHistory
-from tiferet_stocks.interfaces import PriceService
+from tiferet_stocks.interfaces import PriceService, SymbolAliasService
 
 # *** fixtures
 
@@ -31,21 +32,51 @@ def price_service() -> mock.Mock:
 
 # *** functions
 
-# ** function: run
-def run(price_service: mock.Mock, **kwargs) -> list:
+# ** function: alias_service
+def alias_service(aliases: Dict[str, SymbolAlias] = None) -> mock.Mock:
     '''
-    Run GetHistory with the mock price service.
+    A mock symbol alias service returning the given yahoo_chart aliases, or an empty map.
+
+    :param aliases: The aliases keyed by provider ticker.
+    :type aliases: Dict[str, SymbolAlias]
+    :return: The mock symbol alias service.
+    :rtype: mock.Mock
+    '''
+
+    # Return data only, as the configured repository does.
+    service = mock.Mock(spec=SymbolAliasService)
+    service.get_aliases.return_value = aliases or {}
+    return service
+
+# ** function: brk_aliases
+def brk_aliases() -> Dict[str, SymbolAlias]:
+    '''
+    The yahoo_chart alias map for BRK.B, keyed by provider ticker.
+
+    :return: The alias map.
+    :rtype: Dict[str, SymbolAlias]
+    '''
+
+    # Build and return the map.
+    return {'BRK-B': SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')}
+
+# ** function: run
+def run(price_service: mock.Mock, aliases: Dict[str, SymbolAlias] = None, **kwargs) -> list:
+    '''
+    Run GetHistory with the mock price service and a mock alias service.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
+    :param aliases: The aliases the mock alias service returns, keyed by provider ticker.
+    :type aliases: Dict[str, SymbolAlias]
     :param kwargs: The event parameters.
     :type kwargs: dict
     :return: The event result.
     :rtype: list
     '''
 
-    # Handle the event with its one dependency.
-    return DomainEvent.handle(GetHistory, dependencies={'price_service': price_service}, **kwargs)
+    # Handle the event with its dependencies.
+    return DomainEvent.handle(GetHistory, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(aliases)}, **kwargs)
 
 # *** tests
 
@@ -151,7 +182,7 @@ def test_get_history_date_objects(price_service: mock.Mock) -> None:
     '''
 
     with pytest.raises(TiferetError) as exc_info:
-        GetHistory(price_service=price_service).execute(symbol='AAPL', start=date(2026, 10, 19), end=date(2026, 10, 23))
+        GetHistory(price_service=price_service, symbol_alias_service=alias_service()).execute(symbol='AAPL', start=date(2026, 10, 19), end=date(2026, 10, 23))
 
     assert exc_info.value.error_code == 'INVALID_HISTORY_RANGE'
     price_service.get_history.assert_not_called()
@@ -170,8 +201,62 @@ def test_get_history_depends_only_on_price_service(price_service: mock.Mock) -> 
     with mock.patch('builtins.open') as patched_open:
         run(price_service, symbol='AAPL', start='2026-10-19', end='2026-10-23')
 
-    assert list(inspect.signature(GetHistory.__init__).parameters) == ['self', 'price_service']
+    assert list(inspect.signature(GetHistory.__init__).parameters) == ['self', 'price_service', 'symbol_alias_service']
     patched_open.assert_not_called()
+
+# ** test: get_history_brk_b_alias
+def test_get_history_brk_b_alias(price_service: mock.Mock) -> None:
+    '''
+    Test that a canonical BRK.B request is fetched as BRK-B and its bars come back under BRK.B.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    bar = PriceBar(symbol_id='BRK-B', date='2026-10-20', open=1, high=2, low=1, close=2)
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='BRK-B', start='2026-10-20', end='2026-10-20', bars=[bar])
+
+    bars = run(price_service, aliases=brk_aliases(), symbol='BRK.B', start='2026-10-20', end='2026-10-20')
+
+    price_service.get_history.assert_called_once_with('BRK-B', '2026-10-20', '2026-10-20')
+    assert [b.symbol_id for b in bars] == ['BRK.B']
+    assert bars[0].close == 2
+
+# ** test: get_history_brk_b_alias_unavailable
+def test_get_history_brk_b_alias_unavailable(price_service: mock.Mock) -> None:
+    '''
+    Test that HISTORY_UNAVAILABLE is unchanged for an aliased symbol and names the canonical id.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    failure = QuoteFailure(symbol_id='BRK-B', reason='not_found', detail='HTTP 404')
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='BRK-B', start='2026-10-20', end='2026-10-20', failure=failure)
+
+    with pytest.raises(TiferetError) as exc_info:
+        run(price_service, aliases=brk_aliases(), symbol='BRK.B', start='2026-10-20', end='2026-10-20')
+
+    assert exc_info.value.error_code == 'HISTORY_UNAVAILABLE'
+    assert exc_info.value.kwargs['symbol'] == 'BRK.B'
+    assert exc_info.value.kwargs['failure']['symbol_id'] == 'BRK.B'
+
+# ** test: get_history_control_without_alias
+def test_get_history_control_without_alias(price_service: mock.Mock) -> None:
+    '''
+    Test that a symbol with no alias is requested and returned unchanged when aliases are configured.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    bar = PriceBar(symbol_id='AAPL', date='2026-10-20', open=1, high=2, low=1, close=2)
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='AAPL', start='2026-10-20', end='2026-10-20', bars=[bar])
+
+    bars = run(price_service, aliases=brk_aliases(), symbol='AAPL', start='2026-10-20', end='2026-10-20')
+
+    price_service.get_history.assert_called_once_with('AAPL', '2026-10-20', '2026-10-20')
+    assert bars == [bar]
 
 # *** testers
 
@@ -183,6 +268,10 @@ def test_get_history_depends_only_on_price_service(price_service: mock.Mock) -> 
         'price_service': {
             'module_path': 'tiferet_stocks.interfaces',
             'class_name': 'PriceService',
+        },
+        'symbol_alias_service': {
+            'module_path': 'tiferet_stocks.interfaces',
+            'class_name': 'SymbolAliasService',
         },
     },
     sample_kwargs={'symbol': 'AAPL', 'start': '2026-10-19', 'end': '2026-10-23'},

@@ -13,6 +13,9 @@ from tiferet.assets.core import EN_US, create_default_error_data
 # ** constant: quotes_unavailable_id
 QUOTES_UNAVAILABLE_ID = 'QUOTES_UNAVAILABLE'
 
+# ** constant: symbol_not_found_id
+SYMBOL_NOT_FOUND_ID = 'SYMBOL_NOT_FOUND'
+
 # ** constant: watchlist_not_found_id
 WATCHLIST_NOT_FOUND_ID = 'WATCHLIST_NOT_FOUND'
 
@@ -40,6 +43,12 @@ INVALID_HISTORY_RANGE_ID = 'INVALID_HISTORY_RANGE'
 QUOTES_UNAVAILABLE_DATA = create_default_error_data(
     'Quotes Unavailable',
     [(EN_US, 'No quotes are available for the requested symbols: {symbols}.')],
+)
+
+# ** constant: symbol_not_found_data
+SYMBOL_NOT_FOUND_DATA = create_default_error_data(
+    'Symbol Not Found',
+    [(EN_US, 'Symbol not found: {id}.')],
 )
 
 # ** constant: watchlist_not_found_data
@@ -89,6 +98,7 @@ INVALID_HISTORY_RANGE_DATA = create_default_error_data(
 # ** constant: default_errors
 DEFAULT_ERRORS = {
     QUOTES_UNAVAILABLE_ID: QUOTES_UNAVAILABLE_DATA,
+    SYMBOL_NOT_FOUND_ID: SYMBOL_NOT_FOUND_DATA,
     HISTORY_UNAVAILABLE_ID: HISTORY_UNAVAILABLE_DATA,
     INVALID_HISTORY_RANGE_ID: INVALID_HISTORY_RANGE_DATA,
     WATCHLIST_NOT_FOUND_ID: WATCHLIST_NOT_FOUND_DATA,

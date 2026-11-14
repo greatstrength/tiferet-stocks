@@ -4,6 +4,7 @@
 
 # ** core
 import inspect
+from typing import Dict
 from unittest import mock
 
 # ** infra
@@ -12,9 +13,9 @@ from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
-from tiferet_stocks.domain import Quote, QuoteFailure, Quotations
+from tiferet_stocks.domain import Quote, QuoteFailure, Quotations, Symbol, SymbolAlias, SymbolWarning
 from tiferet_stocks.events import GetQuotes
-from tiferet_stocks.interfaces import PriceService
+from tiferet_stocks.interfaces import PriceService, SymbolAliasService
 
 # *** fixtures
 
@@ -26,6 +27,36 @@ def price_service() -> mock.Mock:
     '''
 
     return mock.Mock(spec=PriceService)
+
+# *** functions
+
+# ** function: alias_service
+def alias_service(aliases: Dict[str, SymbolAlias] = None) -> mock.Mock:
+    '''
+    A mock symbol alias service returning the given yahoo_chart aliases, or an empty map.
+
+    :param aliases: The aliases keyed by provider ticker.
+    :type aliases: Dict[str, SymbolAlias]
+    :return: The mock symbol alias service.
+    :rtype: mock.Mock
+    '''
+
+    # Return data only, as the configured repository does.
+    service = mock.Mock(spec=SymbolAliasService)
+    service.get_aliases.return_value = aliases or {}
+    return service
+
+# ** function: brk_aliases
+def brk_aliases() -> Dict[str, SymbolAlias]:
+    '''
+    The yahoo_chart alias map for BRK.B, keyed by provider ticker.
+
+    :return: The alias map.
+    :rtype: Dict[str, SymbolAlias]
+    '''
+
+    # Build and return the map.
+    return {'BRK-B': SymbolAlias(provider='yahoo_chart', provider_ticker='BRK-B', canonical_id='BRK.B')}
 
 # *** tests
 
@@ -43,7 +74,7 @@ def test_get_quotes_partial_failure(price_service: mock.Mock) -> None:
         failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
     )
 
-    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['AAPL', 'NOPE'])
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['AAPL', 'NOPE'])
 
     assert list(quotations.quotes) == ['AAPL']
     assert quotations.failures[0].symbol_id == 'NOPE'
@@ -66,7 +97,7 @@ def test_get_quotes_all_failed(price_service: mock.Mock) -> None:
     )
 
     with pytest.raises(TiferetError) as exc_info:
-        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['NOPE', 'GONE'])
+        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['NOPE', 'GONE'])
 
     assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
     assert exc_info.value.kwargs['symbols'] == 'NOPE, GONE'
@@ -83,7 +114,7 @@ def test_get_quotes_single_string(price_service: mock.Mock) -> None:
 
     price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
 
-    DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols='SPY')
+    DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols='SPY')
 
     price_service.get_quotes.assert_called_once_with(['SPY'])
 
@@ -99,9 +130,9 @@ def test_get_quotes_depends_only_on_price_service(price_service: mock.Mock) -> N
     price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
 
     with mock.patch('builtins.open') as patched_open:
-        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=['SPY'])
+        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['SPY'])
 
-    assert list(inspect.signature(GetQuotes.__init__).parameters) == ['self', 'price_service']
+    assert list(inspect.signature(GetQuotes.__init__).parameters) == ['self', 'price_service', 'symbol_alias_service']
     patched_open.assert_not_called()
 
 # ** test: get_quotes_empty_symbols
@@ -113,9 +144,84 @@ def test_get_quotes_empty_symbols(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service}, symbols=[])
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=[])
 
     assert quotations.quotes == {} and quotations.failures == []
+    price_service.get_quotes.assert_not_called()
+
+# ** test: get_quotes_brk_b_alias
+def test_get_quotes_brk_b_alias(price_service: mock.Mock) -> None:
+    '''
+    Test that a canonical BRK.B request is quoted as BRK-B and every part of the answer is re-keyed to BRK.B.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    price_service.get_quotes.return_value = Quotations(
+        quotes={
+            'BRK-B': Quote(symbol_id='BRK-B', price=589.83, source='yahoo_chart'),
+            'AAPL': Quote(symbol_id='AAPL', price=251.5, source='yahoo_chart'),
+        },
+        symbols={'BRK-B': Symbol(id='BRK-B', exchange='NYSE', asset_type='equity')},
+        warnings=[SymbolWarning(symbol_id='BRK-B', reason='unmapped_asset_type', detail='TEST')],
+        failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
+        fetched_at='2026-11-12T21:00:00+00:00',
+    )
+
+    quotations = DomainEvent.handle(
+        GetQuotes,
+        dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(brk_aliases())},
+        symbols=['BRK.B', 'AAPL', 'NOPE'],
+    )
+
+    price_service.get_quotes.assert_called_once_with(['BRK-B', 'AAPL', 'NOPE'])
+    assert list(quotations.quotes) == ['BRK.B', 'AAPL']
+    assert quotations.quotes['BRK.B'].symbol_id == 'BRK.B'
+    assert quotations.quotes['AAPL'].symbol_id == 'AAPL'
+    assert quotations.symbols['BRK.B'].id == 'BRK.B'
+    assert quotations.symbols['BRK.B'].aliases == list(brk_aliases().values())
+    assert quotations.warnings[0].symbol_id == 'BRK.B'
+    assert [failure.symbol_id for failure in quotations.failures] == ['NOPE']
+    assert quotations.fetched_at == '2026-11-12T21:00:00+00:00'
+
+# ** test: get_quotes_brk_b_alias_all_failed
+def test_get_quotes_brk_b_alias_all_failed(price_service: mock.Mock) -> None:
+    '''
+    Test that QUOTES_UNAVAILABLE is unchanged for an aliased symbol and its failures name the canonical id.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    price_service.get_quotes.return_value = Quotations(failures=[QuoteFailure(symbol_id='BRK-B', reason='not_found', detail='HTTP 404')])
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            GetQuotes,
+            dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(brk_aliases())},
+            symbols=['BRK.B'],
+        )
+
+    assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
+    assert exc_info.value.kwargs['symbols'] == 'BRK.B'
+    assert [f['symbol_id'] for f in exc_info.value.kwargs['failures']] == ['BRK.B']
+
+# ** test: get_quotes_empty_symbols_reads_no_aliases
+def test_get_quotes_empty_symbols_reads_no_aliases(price_service: mock.Mock) -> None:
+    '''
+    Test that an empty request returns before the alias and price services are called.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    aliases = alias_service(brk_aliases())
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': aliases}, symbols=[])
+
+    assert quotations == Quotations()
+    aliases.get_aliases.assert_not_called()
     price_service.get_quotes.assert_not_called()
 
 # *** testers
@@ -128,6 +234,10 @@ def test_get_quotes_empty_symbols(price_service: mock.Mock) -> None:
         'price_service': {
             'module_path': 'tiferet_stocks.interfaces',
             'class_name': 'PriceService',
+        },
+        'symbol_alias_service': {
+            'module_path': 'tiferet_stocks.interfaces',
+            'class_name': 'SymbolAliasService',
         },
     },
     sample_kwargs={'symbols': ['AAPL']},

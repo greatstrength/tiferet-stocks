@@ -9,6 +9,9 @@ configuration.
 # ** constant: symbol_lookup_service_id
 SYMBOL_LOOKUP_SERVICE_ID = 'symbol_lookup_service'
 
+# ** constant: symbol_alias_service_id
+SYMBOL_ALIAS_SERVICE_ID = 'symbol_alias_service'
+
 # ** constant: price_service_id
 PRICE_SERVICE_ID = 'price_service'
 
