@@ -357,6 +357,31 @@ def test_session_service_beats_top_level_service(tmp_path, monkeypatch, capsys) 
     assert '222' in out
     assert '111' not in out
 
+# ** test: symbols_stay_out_of_app_sessions
+def test_symbols_stay_out_of_app_sessions(tmp_path) -> None:
+    '''
+    Symbols and aliases are domain concerns: no packaged, reference or resolved app session carries a symbol or alias key, constant or service.
+    '''
+
+    def assert_no_symbols(session: dict) -> None:
+        text = json.dumps(session).lower()
+        assert 'symbol' not in text and 'alias' not in text
+
+    # The packaged sessions and the reference config sessions.
+    for session in a.app.STOCKS_DEFAULT_APP_SESSIONS.values():
+        assert_no_symbols(session)
+    for session in REFERENCE_CONFIG['sessions'].values():
+        assert_no_symbols(session)
+
+    # The session the CLI resolves from the cache, and from the reference config.
+    cache = build_cache()
+    for config_path in (str(tmp_path / 'missing.yml'), str(Path(__file__).resolve().parents[1] / 'config.yml')):
+        assert_no_symbols(get_app_session(cache, config_path).model_dump(mode='json'))
+
+    # The alias service is registered with the services, outside every session.
+    assert a.SYMBOL_ALIAS_SERVICE_ID in a.app.STOCKS_DEFAULT_SERVICES
+    assert a.SYMBOL_ALIAS_SERVICE_ID in REFERENCE_CONFIG['services']
+
 # ** test: yahoo_default_symbol_aliases
 def test_yahoo_default_symbol_aliases_carry_no_provider() -> None:
     '''
