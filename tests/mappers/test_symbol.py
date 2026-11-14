@@ -153,6 +153,23 @@ def test_add_alias_rejects_second_alias_for_same_provider() -> None:
     assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
     assert symbol.aliases == [first]
 
+# ** test: add_alias_rejects_second_configured_ticker_for_same_provider
+def test_add_alias_rejects_second_configured_ticker_for_same_provider() -> None:
+    '''
+    Test that two same-provider configured rows for one canonical id under different tickers (X1, then X2 for BRK.B) are a data-integrity error, not resolved by order.
+    '''
+
+    first = SymbolAlias(provider=YAHOO_CHART, provider_ticker='X1', canonical_id='BRK.B')
+    second = SymbolAlias(provider=YAHOO_CHART, provider_ticker='X2', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='BRK.B')
+    symbol.add_alias(first)
+
+    with pytest.raises(ModelError) as caught:
+        symbol.add_alias(second)
+
+    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
+    assert symbol.aliases == [first]
+
 # ** test: add_alias_rejects_alias_for_another_symbol
 def test_add_alias_rejects_alias_for_another_symbol() -> None:
     '''

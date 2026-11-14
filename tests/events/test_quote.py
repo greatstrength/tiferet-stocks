@@ -10,6 +10,7 @@ from unittest import mock
 # ** infra
 import pytest
 from tiferet import TiferetError, use_tester
+from tiferet.domain import ModelError
 from tiferet.events import DomainEvent
 
 # ** app
@@ -273,10 +274,10 @@ def test_get_quotes_raw_default_ticker_passes_through_when_configured_elsewhere(
     price_service.get_quotes.assert_called_once_with(['BRKB.X', 'BRK-B'])
     assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'BRK-B']
 
-# ** test: get_quotes_later_configured_alias
-def test_get_quotes_later_configured_alias_wins(price_service: mock.Mock) -> None:
+# ** test: get_quotes_duplicate_configured_alias
+def test_get_quotes_rejects_two_configured_aliases_for_one_symbol(price_service: mock.Mock) -> None:
     '''
-    Test that with X1 then X2 configured for BRK.B, BRK.B is sent as X2 and a raw X1 request stays X1.
+    Test that X1 and X2 both configured for BRK.B raise ALIAS_PROVIDER_EXISTS before any provider call, rather than one winning by order.
 
     :param price_service: The mock price service.
     :type price_service: mock.Mock
@@ -286,14 +287,12 @@ def test_get_quotes_later_configured_alias_wins(price_service: mock.Mock) -> Non
         'X1': SymbolAlias(provider='yahoo_chart', provider_ticker='X1', canonical_id='BRK.B'),
         'X2': SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B'),
     }
-    price_service.get_quotes.return_value = QuoteList(
-        quotes=[Quote(symbol_id='X2', price=589.83, source='yahoo_chart'), Quote(symbol_id='X1', price=1.0, source='yahoo_chart')],
-    )
 
-    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B', 'X1'])
+    with pytest.raises(ModelError) as caught:
+        DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B'])
 
-    price_service.get_quotes.assert_called_once_with(['X2', 'X1'])
-    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'X1']
+    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
+    price_service.get_quotes.assert_not_called()
 
 # ** test: get_quotes_reports_canonical_ids_only
 def test_get_quotes_reports_canonical_library_ids_only(price_service: mock.Mock) -> None:

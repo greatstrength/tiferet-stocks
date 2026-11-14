@@ -13,7 +13,7 @@ import pytest
 import yaml
 from tiferet import assets as core_assets
 from tiferet.blueprints import core
-from tiferet.domain import CliCommand
+from tiferet.domain import CliCommand, ModelError
 from tiferet.interfaces.core import ServiceError
 from tiferet.utils.file import FILE_NOT_FOUND_ID
 
@@ -396,6 +396,23 @@ def test_configured_symbols_file_alias_beats_yahoo_default(no_config, capsys) ->
     assert requested == ['cookie', 'crumb', 'quote:BRK-B,BRK.B']
     rows = {line.split()[0]: line.split()[1] for line in capsys.readouterr().out.splitlines() if line.split() and line.split()[0] in ('BRKB.X', 'BRK.B')}
     assert rows == {'BRKB.X': 'ok', 'BRK.B': 'failed'}
+
+# ** test: duplicate_configured_alias
+def test_symbols_file_two_aliases_for_one_symbol_fail(no_config) -> None:
+    '''
+    A data/symbols.yml with two yahoo_chart rows for BRK.B fails with ALIAS_PROVIDER_EXISTS before any request, rather than picking one row.
+    '''
+
+    (no_config / 'data').mkdir()
+    (no_config / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X1', 'canonical_id': 'BRK.B'},
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X2', 'canonical_id': 'BRK.B'},
+    ]}))
+
+    with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')):
+        with pytest.raises(ModelError) as caught:
+            main(argv=['quotes', 'get', 'BRK.B'])
+    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
 
 # ** test: configured_ticker_replaces_default
 def test_configured_symbols_file_ticker_replaces_yahoo_default(no_config, capsys) -> None:

@@ -83,7 +83,9 @@ class SymbolAliasEvent(DomainEvent):
         '''
         Return one merged alias map for a provider: the configured aliases, which take precedence, and the default aliases from the assets.
 
-        The caller uses the returned map for both the outbound and the inbound direction of one call.
+        The caller uses the returned map for both the outbound and the inbound direction of one call. A configured source
+        may hold at most one alias per provider for a canonical id; every configured row runs through SymbolAggregate.add_alias,
+        so a second one is a data-integrity error, ALIAS_PROVIDER_EXISTS, rather than being resolved by order.
 
         :param provider: The provider id, such as yahoo_chart.
         :type provider: str
@@ -98,8 +100,14 @@ class SymbolAliasEvent(DomainEvent):
             for provider_ticker, data in defaults.items()
         }
 
+        # Reject a second configured alias for one canonical id through the aggregate's one-alias-per-provider rule.
+        configured = self.symbol_alias_service.get_aliases(provider)
+        symbols = {}
+        for alias in configured.values():
+            symbols.setdefault(alias.canonical_id, SymbolAggregate(id=alias.canonical_id)).add_alias(alias)
+
         # Merge them with the configured aliases, which take precedence.
-        return merge_symbol_aliases(self.symbol_alias_service.get_aliases(provider), default_aliases)
+        return merge_symbol_aliases(configured, default_aliases)
 
 # ** event: symbol_lookup_event
 class SymbolLookupEvent(SymbolAliasEvent):

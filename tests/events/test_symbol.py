@@ -10,6 +10,7 @@ from unittest import mock
 # ** infra
 import pytest
 from tiferet import TiferetError, use_tester
+from tiferet.domain import ModelError
 from tiferet.events import DomainEvent
 
 # ** app
@@ -434,6 +435,38 @@ def test_alias_event_configured_alias_wins(provider_ticker: str, canonical_id: s
     }
 
     assert SymbolAliasEvent(alias_service(configured)).get_aliases('yahoo_chart') == configured
+
+# ** test: alias_event_duplicate_configured_alias
+def test_alias_event_rejects_two_configured_aliases_for_one_symbol() -> None:
+    '''
+    Test that two configured aliases of one provider for one canonical id raise ALIAS_PROVIDER_EXISTS instead of resolving by order.
+    '''
+
+    configured = {
+        'X1': SymbolAlias(provider='yahoo_chart', provider_ticker='X1', canonical_id='BRK.B'),
+        'X2': SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B'),
+    }
+
+    with pytest.raises(ModelError) as caught:
+        SymbolAliasEvent(alias_service(configured)).get_aliases('yahoo_chart')
+
+    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
+
+# ** test: alias_event_one_alias_per_provider
+def test_alias_event_allows_one_alias_per_provider_for_one_symbol() -> None:
+    '''
+    Test that one canonical id may have an alias under each provider: each provider's aliases are checked on their own.
+    '''
+
+    yahoo = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    other = {'BRK/B': SymbolAlias.model_construct(provider='other_feed', provider_ticker='BRK/B', canonical_id='BRK.B')}
+    service = mock.Mock(spec=SymbolAliasService)
+    service.get_aliases.side_effect = lambda provider: yahoo if provider == 'yahoo_chart' else other
+    event = SymbolAliasEvent(service)
+
+    assert event.get_aliases('yahoo_chart')['BRKB.X'] == yahoo['BRKB.X']
+    assert 'BRK-B' not in event.get_aliases('yahoo_chart')
+    assert event.get_aliases('other_feed') == other
 
 # ** test: resolve_symbols_configured_ticker
 def test_resolve_symbols_configured_ticker_replaces_default(symbol_lookup_service: mock.Mock) -> None:
