@@ -13,7 +13,7 @@ import pytest
 import yaml
 from tiferet import assets as core_assets
 from tiferet.blueprints import core
-from tiferet.domain import CliCommand, ModelError
+from tiferet.domain import CliCommand
 from tiferet.interfaces.core import ServiceError
 from tiferet.utils.file import FILE_NOT_FOUND_ID
 
@@ -423,9 +423,9 @@ def test_configured_symbols_file_alias_beats_yahoo_default(no_config, capsys) ->
     assert rows == {'BRKB.X': 'ok', 'BRK.B': 'failed'}
 
 # ** test: duplicate_configured_alias
-def test_symbols_file_two_aliases_for_one_symbol_fail(no_config) -> None:
+def test_symbols_file_two_aliases_for_one_symbol_fail(no_config, capsys) -> None:
     '''
-    A data/symbols.yml with two yahoo_chart rows for BRK.B fails with ALIAS_PROVIDER_EXISTS before any request, rather than picking one row.
+    A data/symbols.yml with two yahoo_chart rows for BRK.B exits 1 with the catalogued ALIAS_PROVIDER_EXISTS message naming both tickers, before any request and with no traceback.
     '''
 
     (no_config / 'data').mkdir()
@@ -435,9 +435,13 @@ def test_symbols_file_two_aliases_for_one_symbol_fail(no_config) -> None:
     ]}))
 
     with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')):
-        with pytest.raises(ModelError) as caught:
+        with pytest.raises(SystemExit) as exited:
             main(argv=['quotes', 'get', 'BRK.B'])
-    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
+    assert exited.value.code == 1
+    err = capsys.readouterr().err
+    assert 'ALIAS_PROVIDER_EXISTS' in err
+    assert 'Symbol BRK.B has more than one yahoo_chart alias: X1 and X2.' in err
+    assert 'Traceback' not in err
 
 # ** test: configured_ticker_replaces_default
 def test_configured_symbols_file_ticker_replaces_yahoo_default(no_config, capsys) -> None:
@@ -556,6 +560,19 @@ def test_installed_console_with_no_config(installed_cli, tmp_path) -> None:
 
     helped = run('--help')
     assert helped.returncode == 0, helped.stderr
+
+    # A duplicate provider alias in the symbols file is a clean catalogued exit 1, not a traceback.
+    (cwd / 'data').mkdir()
+    (cwd / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X1', 'canonical_id': 'BRK.B'},
+        {'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'X2', 'canonical_id': 'BRK.B'},
+    ]}))
+    duplicate = run('quotes', 'get', 'BRK.B')
+    assert duplicate.returncode == 1
+    assert 'Symbol BRK.B has more than one yahoo_chart alias: X1 and X2.' in duplicate.stderr
+    assert 'Traceback' not in duplicate.stderr + duplicate.stdout
+    (cwd / 'data' / 'symbols.yml').unlink()
+    (cwd / 'data').rmdir()
     assert 'watchlists' in helped.stdout
     listed = run('exchanges', 'list')
     assert listed.returncode == 0, listed.stderr

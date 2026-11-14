@@ -10,7 +10,6 @@ from unittest import mock
 # ** infra
 import pytest
 from tiferet import TiferetError, use_tester
-from tiferet.domain import ModelError
 from tiferet.events import DomainEvent
 
 # ** app
@@ -288,10 +287,11 @@ def test_get_quotes_rejects_two_configured_aliases_for_one_symbol(price_service:
         'X2': SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B'),
     }
 
-    with pytest.raises(ModelError) as caught:
+    with pytest.raises(TiferetError) as caught:
         DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B'])
 
     assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
+    assert caught.value.kwargs == {'canonical_id': 'BRK.B', 'provider': 'yahoo_chart', 'existing_ticker': 'X1', 'provider_ticker': 'X2'}
     price_service.get_quotes.assert_not_called()
 
 # ** test: get_quotes_reports_canonical_ids_only

@@ -16,6 +16,9 @@ QUOTES_UNAVAILABLE_ID = 'QUOTES_UNAVAILABLE'
 # ** constant: symbol_not_found_id
 SYMBOL_NOT_FOUND_ID = 'SYMBOL_NOT_FOUND'
 
+# ** constant: alias_provider_exists_id
+ALIAS_PROVIDER_EXISTS_ID = 'ALIAS_PROVIDER_EXISTS'
+
 # ** constant: watchlist_not_found_id
 WATCHLIST_NOT_FOUND_ID = 'WATCHLIST_NOT_FOUND'
 
@@ -49,6 +52,12 @@ QUOTES_UNAVAILABLE_DATA = create_default_error_data(
 SYMBOL_NOT_FOUND_DATA = create_default_error_data(
     'Symbol Not Found',
     [(EN_US, 'Symbol not found: {id}.')],
+)
+
+# ** constant: alias_provider_exists_data
+ALIAS_PROVIDER_EXISTS_DATA = create_default_error_data(
+    'Alias Provider Exists',
+    [(EN_US, 'Symbol {canonical_id} has more than one {provider} alias: {existing_ticker} and {provider_ticker}.')],
 )
 
 # ** constant: watchlist_not_found_data
@@ -99,6 +108,7 @@ INVALID_HISTORY_RANGE_DATA = create_default_error_data(
 DEFAULT_ERRORS = {
     QUOTES_UNAVAILABLE_ID: QUOTES_UNAVAILABLE_DATA,
     SYMBOL_NOT_FOUND_ID: SYMBOL_NOT_FOUND_DATA,
+    ALIAS_PROVIDER_EXISTS_ID: ALIAS_PROVIDER_EXISTS_DATA,
     HISTORY_UNAVAILABLE_ID: HISTORY_UNAVAILABLE_DATA,
     INVALID_HISTORY_RANGE_ID: INVALID_HISTORY_RANGE_DATA,
     WATCHLIST_NOT_FOUND_ID: WATCHLIST_NOT_FOUND_DATA,

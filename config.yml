@@ -181,6 +181,11 @@ errors:
     message:
       - lang: en_US
         text: 'Symbol not found: {id}.'
+  ALIAS_PROVIDER_EXISTS:
+    name: Alias Provider Exists
+    message:
+      - lang: en_US
+        text: 'Symbol {canonical_id} has more than one {provider} alias: {existing_ticker} and {provider_ticker}.'
   WATCHLIST_NOT_FOUND:
     name: Watchlist Not Found
     message:

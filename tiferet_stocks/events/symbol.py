@@ -6,6 +6,7 @@
 from typing import Dict, List
 
 # ** infra
+from tiferet.domain import ModelError
 from tiferet.events import DomainEvent
 
 # ** app
@@ -85,7 +86,8 @@ class SymbolAliasEvent(DomainEvent):
 
         The caller uses the returned map for both the outbound and the inbound direction of one call. A configured source
         may hold at most one alias per provider for a canonical id; every configured row runs through SymbolAggregate.add_alias,
-        so a second one is a data-integrity error, ALIAS_PROVIDER_EXISTS, rather than being resolved by order.
+        so a second one is a data-integrity error, the catalogued ALIAS_PROVIDER_EXISTS naming the canonical id, the
+        provider and both tickers, rather than being resolved by order.
 
         :param provider: The provider id, such as yahoo_chart.
         :type provider: str
@@ -100,11 +102,25 @@ class SymbolAliasEvent(DomainEvent):
             for provider_ticker, data in defaults.items()
         }
 
-        # Reject a second configured alias for one canonical id through the aggregate's one-alias-per-provider rule.
+        # Reject a second configured alias for one canonical id through the aggregate's one-alias-per-provider rule, as
+        # the catalogued error naming the alias already on the symbol and the clashing one.
         configured = self.symbol_alias_service.get_aliases(provider)
         symbols = {}
         for alias in configured.values():
-            symbols.setdefault(alias.canonical_id, SymbolAggregate(id=alias.canonical_id)).add_alias(alias)
+            symbol = symbols.setdefault(alias.canonical_id, SymbolAggregate(id=alias.canonical_id))
+            try:
+                symbol.add_alias(alias)
+            except ModelError as error:
+                if error.error_code != a.ALIAS_PROVIDER_EXISTS_ID:
+                    raise
+                existing = next(existing for existing in symbol.aliases if existing.provider == alias.provider)
+                self.raise_error(
+                    a.ALIAS_PROVIDER_EXISTS_ID,
+                    canonical_id=alias.canonical_id,
+                    provider=alias.provider,
+                    existing_ticker=existing.provider_ticker,
+                    provider_ticker=alias.provider_ticker,
+                )
 
         # Merge them with the configured aliases, which take precedence.
         return merge_symbol_aliases(configured, default_aliases)
