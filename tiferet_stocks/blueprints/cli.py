@@ -247,6 +247,10 @@ def list_commands_handler(cache: CacheContext, get_dependency: Callable) -> Call
     '''
     Build a zero-arg handler that assembles the stocks commands from the cache and the configured CLI service.
 
+    The cached commands load first, then the configured commands in order; the later definition of a command (its
+    group key and key, which argparse sees) wins and keeps the position of the first, as a cache namespace keyed by id
+    does, so argparse never sees a repeated command.
+
     :param cache: The stocks CLI bootstrap cache.
     :type cache: CacheContext
     :param get_dependency: The DI resolution handler.
@@ -258,8 +262,11 @@ def list_commands_handler(cache: CacheContext, get_dependency: Callable) -> Call
     # Return the handler closure bound to the cache and resolver.
     def handler() -> List[CliCommand]:
 
-        # The cached stocks commands, then whatever the session's CLI service lists.
-        return get_stocks_cli_commands(cache) + read_configured(get_dependency, core_assets.app.LIST_COMMANDS_EVT_ID)
+        # The cached stocks commands, then whatever the session's CLI service lists, keyed by group key and key so the later wins.
+        commands = {}
+        for command in get_stocks_cli_commands(cache) + read_configured(get_dependency, core_assets.app.LIST_COMMANDS_EVT_ID):
+            commands[(command.group_key, command.key)] = command
+        return list(commands.values())
 
     # Return the closure.
     return handler

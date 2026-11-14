@@ -273,6 +273,48 @@ def test_get_quotes_raw_default_ticker_passes_through_when_configured_elsewhere(
     price_service.get_quotes.assert_called_once_with(['BRKB.X', 'BRK-B'])
     assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'BRK-B']
 
+# ** test: get_quotes_later_configured_alias
+def test_get_quotes_later_configured_alias_wins(price_service: mock.Mock) -> None:
+    '''
+    Test that with X1 then X2 configured for BRK.B, BRK.B is sent as X2 and a raw X1 request stays X1.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    configured = {
+        'X1': SymbolAlias(provider='yahoo_chart', provider_ticker='X1', canonical_id='BRK.B'),
+        'X2': SymbolAlias(provider='yahoo_chart', provider_ticker='X2', canonical_id='BRK.B'),
+    }
+    price_service.get_quotes.return_value = QuoteList(
+        quotes=[Quote(symbol_id='X2', price=589.83, source='yahoo_chart'), Quote(symbol_id='X1', price=1.0, source='yahoo_chart')],
+    )
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B', 'X1'])
+
+    price_service.get_quotes.assert_called_once_with(['X2', 'X1'])
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'X1']
+
+# ** test: get_quotes_reports_canonical_ids_only
+def test_get_quotes_reports_canonical_library_ids_only(price_service: mock.Mock) -> None:
+    '''
+    Test that with no configured aliases a request for BRK.B, its Yahoo ticker BRK-B and AAPL reports exactly BRK.B and AAPL:
+    output carries canonical library ids only, and BRK-B falls away with no failure.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    price_service.get_quotes.return_value = QuoteList(
+        quotes=[Quote(symbol_id='BRK-B', price=589.83, source='yahoo_chart'), Quote(symbol_id='AAPL', price=251.5, source='yahoo_chart')],
+    )
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['BRK.B', 'BRK-B', 'AAPL'])
+
+    price_service.get_quotes.assert_called_once_with(['BRK-B', 'BRK-B', 'AAPL'])
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'AAPL']
+    assert quotations.failures == []
+
 # *** testers
 
 # ** tester: test_get_quotes_event

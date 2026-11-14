@@ -157,11 +157,11 @@ def test_list_commands_without_config_is_the_cached_set() -> None:
 # ** test: list_commands_cache_plus_config
 def test_list_commands_appends_configured_commands() -> None:
     '''
-    Configured commands follow the cached ones with no merge or override.
+    Configured commands with new ids follow the cached ones.
     '''
 
     cache = build_cache()
-    extra = mock.Mock(spec=CliCommand, id='extra.run')
+    extra = mock.Mock(spec=CliCommand, id='extra.run', group_key='extra', key='run')
     get_dependency, _ = configured(records=[extra])
 
     commands = list_commands_handler(cache, get_dependency)()
@@ -169,6 +169,69 @@ def test_list_commands_appends_configured_commands() -> None:
     assert len(commands) == 14
     assert commands[-1] is extra
     assert commands[:13] == get_stocks_cli_commands(cache)
+
+# ** test: list_commands_later_definition_wins
+def test_list_commands_later_definition_wins() -> None:
+    '''
+    The later definition of a command id wins, across the cache and within the config, keeping the first position.
+    '''
+
+    cache = build_cache()
+    cached = get_stocks_cli_commands(cache)
+    override = mock.Mock(spec=CliCommand, id='exchanges.list', group_key='exchanges', key='list')
+    first = mock.Mock(spec=CliCommand, id='extra.run', group_key='extra', key='run')
+    last = mock.Mock(spec=CliCommand, id='extra.again', group_key='extra', key='run')
+    get_dependency, _ = configured(records=[first, override, last])
+
+    commands = list_commands_handler(cache, get_dependency)()
+
+    assert [command.id for command in commands] == [command.id for command in cached] + ['extra.again']
+    assert commands[[command.id for command in cached].index('exchanges.list')] is override
+    assert commands[-1] is last
+
+# ** test: configured_command_overrides_stocks_command
+def test_configured_command_overrides_stocks_command(no_config, capsys) -> None:
+    '''
+    A config.yml command with a stocks command id replaces it before argparse, so no Python version sees a conflicting subparser.
+    '''
+
+    (no_config / 'config.yml').write_text(yaml.safe_dump({'cli': {'cmds': {'exchanges': {'list': {
+        'group_key': 'exchanges',
+        'key': 'list',
+        'name': 'Exchanges List',
+        'description': 'List the exchanges, as configured.',
+    }}}}}))
+
+    with pytest.raises(SystemExit) as exited:
+        main(argv=['exchanges', '--help'])
+    assert exited.value.code == 0
+    assert 'List the exchanges, as configured.' in capsys.readouterr().out
+
+    main(argv=['exchanges', 'list'])
+    assert 'NYSE_ARCA' in capsys.readouterr().out
+
+# ** test: configured_repeated_command
+def test_configured_repeated_command_resolves_last_wins(no_config, capsys) -> None:
+    '''
+    Two config.yml entries under different YAML keys that declare the same group key and key resolve to the later one before argparse.
+    '''
+
+    def command(description: str) -> dict:
+        return {'group_key': 'exchanges', 'key': 'list', 'name': 'Exchanges List', 'description': description}
+    (no_config / 'config.yml').write_text(yaml.safe_dump({'cli': {'cmds': {
+        'exchanges': {'list': command('The first configured definition.')},
+        'more': {'listing': command('The later configured definition.')},
+    }}}, sort_keys=False))
+
+    with pytest.raises(SystemExit) as exited:
+        main(argv=['exchanges', '--help'])
+    assert exited.value.code == 0
+    out = capsys.readouterr().out
+    assert 'The later configured definition.' in out
+    assert 'The first configured definition.' not in out
+
+    main(argv=['exchanges', 'list'])
+    assert 'NYSE_ARCA' in capsys.readouterr().out
 
 # ** test: list_commands_other_faults
 def test_list_commands_propagates_other_faults() -> None:

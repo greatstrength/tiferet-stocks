@@ -194,12 +194,13 @@ T = TypeVar('T')
 # ** function: merge_symbol_aliases
 def merge_symbol_aliases(configured: Dict[str, SymbolAlias], defaults: Dict[str, SymbolAlias]) -> Dict[str, SymbolAlias]:
     '''
-    Return one alias map for a provider in which the configured aliases take precedence over the defaults.
+    Return one alias map for a provider in which the later definition wins: the defaults first, then the configured aliases in order.
 
-    A default is dropped when a configured alias has its provider ticker or its canonical id, so the merged map is
-    safe to use in both directions.
+    A default is dropped when a configured alias has its provider ticker or its canonical id, and a configured alias is
+    dropped when a later configured alias has its canonical id, so each canonical id has one alias and the merged map
+    is safe to use in both directions.
 
-    :param configured: The configured aliases for one provider, keyed by provider ticker.
+    :param configured: The configured aliases for one provider, keyed by provider ticker, in configuration order.
     :type configured: Dict[str, SymbolAlias]
     :param defaults: The default aliases for the same provider, keyed by provider ticker.
     :type defaults: Dict[str, SymbolAlias]
@@ -207,16 +208,22 @@ def merge_symbol_aliases(configured: Dict[str, SymbolAlias], defaults: Dict[str,
     :rtype: Dict[str, SymbolAlias]
     '''
 
+    # Find the last configured provider ticker for each canonical id.
+    last_tickers = {alias.canonical_id: provider_ticker for provider_ticker, alias in configured.items()}
+
     # Keep a default only when no configured alias covers its provider ticker or canonical id.
-    canonical_ids = {alias.canonical_id for alias in configured.values()}
     merged = {
         provider_ticker: alias
         for provider_ticker, alias in defaults.items()
-        if provider_ticker not in configured and alias.canonical_id not in canonical_ids
+        if provider_ticker not in configured and alias.canonical_id not in last_tickers
     }
 
-    # Add the configured aliases after the surviving defaults.
-    merged.update(configured)
+    # Add, in order, each configured alias that no later configured alias replaces.
+    merged.update({
+        provider_ticker: alias
+        for provider_ticker, alias in configured.items()
+        if last_tickers[alias.canonical_id] == provider_ticker
+    })
     return merged
 
 # ** function: to_provider_ticker

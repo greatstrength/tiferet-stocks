@@ -431,6 +431,26 @@ def test_merge_symbol_aliases_keeps_unrelated_defaults_first() -> None:
 
     assert list(merged) == ['BRK-B', 'BF-B']
 
+# ** test: merge_symbol_aliases_later_configured_wins
+def test_merge_symbol_aliases_later_configured_alias_wins_a_canonical_id() -> None:
+    '''
+    Test that when two configured aliases map one canonical id the later wins outbound and the earlier is dropped, so its raw ticker passes through.
+    '''
+
+    configured = {
+        'X1': SymbolAlias(provider=YAHOO_CHART, provider_ticker='X1', canonical_id='BRK.B'),
+        'BF-B': SymbolAlias(provider=YAHOO_CHART, provider_ticker='BF-B', canonical_id='BF.B'),
+        'X2': SymbolAlias(provider=YAHOO_CHART, provider_ticker='X2', canonical_id='BRK.B'),
+    }
+
+    merged = merge_symbol_aliases(configured, yahoo_brk_aliases())
+
+    assert list(merged) == ['BF-B', 'X2']
+    assert to_provider_ticker('BRK.B', merged) == 'X2'
+    assert to_provider_ticker('X1', merged) == 'X1'
+    assert to_canonical_id('X1', merged) == 'X1'
+    assert list(configured) == ['X1', 'BF-B', 'X2']
+
 # *** testers
 
 # ** tester: test_symbol
