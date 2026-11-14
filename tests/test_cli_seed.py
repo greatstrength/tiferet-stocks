@@ -292,6 +292,45 @@ def test_config_session_service_overrides_cached_service(tmp_path, monkeypatch, 
     main(argv=['watchlists', 'list'])
     assert not (tmp_path / 'data').exists()
 
+# ** test: top_level_service_overrides_cached_service
+def test_top_level_service_overrides_cached_service(tmp_path, monkeypatch, capsys) -> None:
+    '''
+    A config.yml top-level service replaces the cached service of the same id when no session declares it.
+    '''
+
+    monkeypatch.chdir(tmp_path)
+    fixture = Path(__file__).resolve().parent / 'repos' / 'fixtures' / 'static_prices.yml'
+    (tmp_path / 'config.yml').write_text(yaml.safe_dump({'services': {
+        'price_service': {'module_path': 'tiferet_stocks.repos.static', 'class_name': 'StaticPriceRepository', 'params': {'fixture_path': str(fixture)}},
+    }}))
+
+    with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')):
+        main(argv=['quotes', 'get', 'SPY'])
+    out = capsys.readouterr().out
+    assert 'SPY' in out and 'static' in out
+
+# ** test: session_service_beats_top_level_service
+def test_session_service_beats_top_level_service(tmp_path, monkeypatch, capsys) -> None:
+    '''
+    Services layer cache, then top-level, then session: a session service wins over a top-level service with the same id.
+    '''
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'top.yml').write_text(yaml.safe_dump({'prices': {'SPY': {'price': 111.0}}}))
+    (tmp_path / 'session.yml').write_text(yaml.safe_dump({'prices': {'SPY': {'price': 222.0}}}))
+    def static(path: str) -> dict:
+        return {'module_path': 'tiferet_stocks.repos.static', 'class_name': 'StaticPriceRepository', 'params': {'fixture_path': path}}
+    (tmp_path / 'config.yml').write_text(yaml.safe_dump({
+        'services': {'price_service': static(str(tmp_path / 'top.yml'))},
+        'sessions': {'stocks_cli': {'name': 'Mine', 'services': {'price_service': static(str(tmp_path / 'session.yml'))}}},
+    }))
+
+    with mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')):
+        main(argv=['quotes', 'get', 'SPY'])
+    out = capsys.readouterr().out
+    assert '222' in out
+    assert '111' not in out
+
 # ** test: yahoo_default_symbol_aliases
 def test_yahoo_default_symbol_aliases_carry_no_provider() -> None:
     '''

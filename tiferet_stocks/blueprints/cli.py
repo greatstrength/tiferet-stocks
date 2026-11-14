@@ -19,6 +19,7 @@ from tiferet.contexts.error import add_default_errors
 from tiferet.contexts.feature import add_default_features
 from tiferet.domain import AppServiceDependency, AppSession, CliArgument, CliCommand
 from tiferet.interfaces.core import ServiceError
+from tiferet.repos.di import DIConfigRepository
 from tiferet.utils.file import FILE_NOT_FOUND_ID
 
 # ** app
@@ -63,6 +64,38 @@ def read_configured(get_dependency: Callable, event_id: str) -> List[Any]:
         if error.error_code != FILE_NOT_FOUND_ID:
             raise
         return []
+
+# ** function: read_configured_services
+def read_configured_services(app_config: str) -> List[AppServiceDependency]:
+    '''
+    Read the app configuration's top-level services as app service dependencies, treating a missing file as none.
+
+    :param app_config: The resolved app configuration path.
+    :type app_config: str
+    :return: The default dependency of each top-level service registration, in file order.
+    :rtype: List[AppServiceDependency]
+    '''
+
+    # Read the registrations through core's DI configuration repository; only a missing file means none.
+    try:
+        registrations, _ = DIConfigRepository(app_config).list_all()
+    except ServiceError as error:
+        if error.error_code != FILE_NOT_FOUND_ID:
+            raise
+        return []
+
+    # Keep each registration's unflagged dependency, as core's resolver does with no flags.
+    services = []
+    for registration in registrations:
+        dependency = registration.resolve_service()
+        if dependency is not None:
+            services.append(AppServiceDependency(
+                service_id=registration.id,
+                module_path=dependency.module_path,
+                class_name=dependency.class_name,
+                parameters=dict(dependency.parameters or {}),
+            ))
+    return services
 
 # ** function: bind_cli_request
 def bind_cli_request(feature_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -311,6 +344,11 @@ def build_cli(app_config: str = 'config.yml', argv: list | None = None, required
     config_path = str(Path(app_config).resolve())
     cache = build_cache()
     session = get_app_session(cache, config_path, required=required)
+
+    # Layer the services, the later definition winning: the cache, then the config's top-level services written over
+    # it here, then the session's services, which core's container build applies last.
+    for service in read_configured_services(config_path):
+        cache.set(service.service_id, service, *core_assets.app.APP_SERVICE_CACHE_PREFIX)
 
     # Point all core configuration readers at the selected document.
     session.constants = {
