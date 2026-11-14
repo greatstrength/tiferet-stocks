@@ -1,5 +1,9 @@
 # tiferet-stocks
 
+## Install
+
+The package requires `tiferet>=2.2,<2.3`. A plain `pip install tiferet-stocks` (or `pip install .` from a checkout) resolves the latest final Tiferet 2.2 release, 2.2.1 at this writing. `pip install --pre tiferet-stocks` lets pip choose the Tiferet 2.2.2b1 pre-release, which the package is also tested against. The pin is the same either way; `--pre` only allows pre-releases inside it.
+
 ## Watchlist storage
 
 The reference configuration uses `data/watchlists.yml`; `.yaml`, `.yml` and `.json` files are supported through Tiferet's configuration repository. The starter YAML is empty. A missing file is an empty collection: reads return no watchlists and never create a file or directory, and the first save creates the file and any missing parent directories. Malformed files and access failures are not treated as empty.
