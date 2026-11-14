@@ -19,21 +19,18 @@ from ..domain import (
     to_provider_tickers,
 )
 from ..interfaces import PriceService, SymbolAliasService
-from .symbol import apply_symbol_alias
+from .symbol import SymbolAliasEvent, apply_symbol_alias
 
 # *** events
 
 # ** event: get_quotes
-class GetQuotes(DomainEvent):
+class GetQuotes(SymbolAliasEvent):
     '''
     Domain event to get the latest quote for each requested symbol.
     '''
 
     # * attribute: price_service
     price_service: PriceService
-
-    # * attribute: symbol_alias_service
-    symbol_alias_service: SymbolAliasService
 
     # * init
     def __init__(self, price_service: PriceService, symbol_alias_service: SymbolAliasService) -> None:
@@ -73,7 +70,7 @@ class GetQuotes(DomainEvent):
             return QuoteList()
 
         # Get the quotes from the configured provider under the provider tickers; an id with no alias passes through.
-        aliases = self.symbol_alias_service.get_aliases(YAHOO_CHART)
+        aliases = self.get_aliases(YAHOO_CHART)
         provided = self.price_service.get_quotes(to_provider_tickers(symbols, aliases))
 
         # Re-key every part of the answer to the canonical ids.

@@ -105,7 +105,6 @@ def test_cache_seeds_features_sessions_services_errors() -> None:
     assert set(a.app.STOCKS_DEFAULT_SERVICES) <= set(cache.get_by_prefix('app', 'services'))
     assert set(a.app.STOCKS_DEFAULT_APP_SESSIONS) <= set(cache.get_by_prefix('app', 'sessions'))
     assert set(a.error.DEFAULT_ERRORS) <= set(cache.get_by_prefix('app', 'errors'))
-    assert cache.get(a.YAHOO_DEFAULT_SYMBOL_ALIASES_ID, *core_assets.app.APP_CONSTANT_CACHE_PREFIX) == a.YAHOO_DEFAULT_SYMBOL_ALIASES
     assert set(core_assets.app.CORE_DEFAULT_CONSTANTS) <= set(cache.get_by_prefix(*core_assets.app.APP_CONSTANT_CACHE_PREFIX))
 
 # ** test: assets_match_reference_config
@@ -238,23 +237,19 @@ def test_yahoo_default_symbol_aliases_carry_no_provider() -> None:
 
     assert a.create_default_symbol_alias_data('BRK.B') == {'canonical_id': 'BRK.B'}
     assert a.YAHOO_DEFAULT_SYMBOL_ALIASES == {'BRK-B': {'canonical_id': 'BRK.B'}}
-    assert a.STOCKS_DEFAULT_CONSTANTS == {a.YAHOO_DEFAULT_SYMBOL_ALIASES_ID: a.YAHOO_DEFAULT_SYMBOL_ALIASES}
 
-# ** test: symbol_aliases_from_cache
-def test_cached_symbol_aliases_reach_the_alias_service(no_config) -> None:
+# ** test: alias_service_configured_only
+def test_alias_service_returns_configured_aliases_only(no_config) -> None:
     '''
-    Inject the cached Yahoo default aliases app constant into the alias service by name, so they resolve with no symbols file.
+    The container's alias service carries no Yahoo defaults; with no symbols file it returns nothing, and the events add the defaults.
     '''
 
     cache = build_cache()
     container = core.build_app_service_container(cache, app_instance=core.get_app_session(a.STOCKS_CLI_SESSION_ID, cache=cache))
     service = container.get_dependency(a.SYMBOL_ALIAS_SERVICE_ID)
 
-    aliases = service.get_aliases(a.YAHOO_CHART_PROVIDER_ID)
-
-    assert service.yahoo_default_symbol_aliases == a.YAHOO_DEFAULT_SYMBOL_ALIASES
+    assert service.get_aliases(a.YAHOO_CHART_PROVIDER_ID) == {}
     assert not Path(service.config_file).exists()
-    assert {ticker: (alias.provider, alias.provider_ticker, alias.canonical_id) for ticker, alias in aliases.items()} == {'BRK-B': (a.YAHOO_CHART_PROVIDER_ID, 'BRK-B', 'BRK.B')}
 
 # ** test: configured_alias_wins
 def test_configured_symbols_file_alias_beats_yahoo_default(no_config, capsys) -> None:
@@ -273,6 +268,22 @@ def test_configured_symbols_file_alias_beats_yahoo_default(no_config, capsys) ->
     assert requested == ['cookie', 'crumb', 'quote:BRK-B,BRK.B']
     rows = {line.split()[0]: line.split()[1] for line in capsys.readouterr().out.splitlines() if line.split() and line.split()[0] in ('BRKB.X', 'BRK.B')}
     assert rows == {'BRKB.X': 'ok', 'BRK.B': 'failed'}
+
+# ** test: configured_ticker_replaces_default
+def test_configured_symbols_file_ticker_replaces_yahoo_default(no_config, capsys) -> None:
+    '''
+    A data/symbols.yml alias sending BRK.B under another Yahoo ticker replaces the Yahoo default, so BRK-B is never requested.
+    '''
+
+    (no_config / 'data').mkdir()
+    (no_config / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [{'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'BRKB.X', 'canonical_id': 'BRK.B'}]}))
+
+    requested = []
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
+        with pytest.raises(SystemExit):
+            main(argv=['quotes', 'get', 'BRK.B'])
+
+    assert requested == ['cookie', 'crumb', 'quote:BRKB.X']
 
 # ** test: no_config_help
 def test_no_config_help(no_config, capsys) -> None:

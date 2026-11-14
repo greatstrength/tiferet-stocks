@@ -131,7 +131,7 @@ def create_default_symbol_alias_data(canonical_id: str) -> Dict[str, Any]:
     here: the returned dict is always stored under its owning ``*_ID``
     constant (the provider ticker) as a group-dict key, in its provider's
     default aliases group, so embedding either a second time inside the
-    value would restate it. The symbol alias repository reinjects both when
+    value would restate it. The symbol alias events reinject both when
     hydrating the SymbolAlias.
 
     :param canonical_id: The canonical symbol id, such as BRK.B.

@@ -11,7 +11,7 @@ from tiferet.repos.core import ConfigurationRepository
 
 # ** app
 from ..interfaces import SymbolAliasService, SymbolLookupService
-from ..mappers import YAHOO_CHART, SymbolAlias, SymbolLookup
+from ..mappers import SymbolAlias, SymbolLookup
 from .yahoo import YahooChartClient
 
 # *** repos
@@ -19,34 +19,23 @@ from .yahoo import YahooChartClient
 # ** repo: symbol_alias_repository
 class SymbolAliasRepository(SymbolAliasService, ConfigurationRepository):
     '''
-    Reads provider ticker aliases from the aliases list in one YAML or JSON symbols file, falling back to the injected Yahoo default aliases.
-    Reads never create storage; a missing file, a missing aliases list, or a provider with no rows adds nothing.
+    Reads provider ticker aliases from the aliases list in one YAML or JSON symbols file.
+    Reads never create storage; a missing file, a missing aliases list, or a provider with no rows is an empty map.
     '''
 
-    # * attribute: yahoo_default_symbol_aliases
-    yahoo_default_symbol_aliases: Dict[str, Dict[str, Any]]
-
     # * init
-    def __init__(self,
-            symbol_config: str,
-            encoding: str = 'utf-8',
-            yahoo_default_symbol_aliases: Dict[str, Dict[str, Any]] = None) -> None:
+    def __init__(self, symbol_config: str, encoding: str = 'utf-8') -> None:
         '''
-        Select the symbols file, its encoding and the Yahoo default aliases.
+        Select the symbols file and its encoding.
 
         :param symbol_config: The YAML or JSON configuration path.
         :type symbol_config: str
         :param encoding: The file encoding.
         :type encoding: str
-        :param yahoo_default_symbol_aliases: The Yahoo default alias data keyed by provider ticker, injected by the app container from the cached app constant of the same name; None adds none.
-        :type yahoo_default_symbol_aliases: Dict[str, Dict[str, Any]] | None
         '''
 
         # Delegate file format and serialization policy to core.
         ConfigurationRepository.__init__(self, config_file=symbol_config, encoding=encoding)
-
-        # Keep the Yahoo default aliases; their data carries neither provider ticker nor provider, which hydration supplies.
-        self.yahoo_default_symbol_aliases = dict(yahoo_default_symbol_aliases or {})
 
     # * method: _read_document
     def _read_document(self) -> Dict[str, Any]:
@@ -80,20 +69,12 @@ class SymbolAliasRepository(SymbolAliasService, ConfigurationRepository):
         :rtype: Dict[str, SymbolAlias]
         '''
 
-        # Start from the Yahoo defaults for the Yahoo provider, hydrating the provider ticker and provider.
-        aliases = {}
-        if provider == YAHOO_CHART:
-            for provider_ticker, data in self.yahoo_default_symbol_aliases.items():
-                aliases[provider_ticker] = SymbolAlias.model_validate({**data, 'provider_ticker': provider_ticker, 'provider': YAHOO_CHART})
+        # Read the aliases list without touching filesystem state.
+        rows = self._read_document().get('aliases') or []
 
-        # Configured aliases from the symbols file take precedence; the defaults are only the fallback.
-        for row in self._read_document().get('aliases') or []:
-            if row.get('provider') == provider:
-                alias = SymbolAlias.model_validate(row)
-                aliases[alias.provider_ticker] = alias
-
-        # Return the aliases keyed by provider ticker.
-        return aliases
+        # Keep only the requested provider's rows, keyed by provider ticker.
+        aliases = [SymbolAlias.model_validate(row) for row in rows if row.get('provider') == provider]
+        return {alias.provider_ticker: alias for alias in aliases}
 
 # ** repo: yahoo_chart_symbol_repository
 class YahooChartSymbolRepository(YahooChartClient, SymbolLookupService):

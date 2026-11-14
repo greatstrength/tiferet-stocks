@@ -25,6 +25,7 @@ from tiferet_stocks.domain import (
     SymbolAlias,
     SymbolLookup,
     SymbolWarning,
+    merge_symbol_aliases,
     rekey_map,
     rekey_symbol_id,
     rekey_symbol_ids,
@@ -378,6 +379,57 @@ def test_alias_helpers_do_not_raise_on_empty_input() -> None:
     assert rekey_symbol_ids([], aliases) == []
     assert to_provider_ticker('AAPL', {}) == 'AAPL'
     assert to_canonical_id('AAPL', {}) == 'AAPL'
+
+# ** test: merge_symbol_aliases_keeps_defaults
+def test_merge_symbol_aliases_keeps_defaults_when_nothing_is_configured() -> None:
+    '''
+    Test that the defaults are the merged map when nothing is configured, and that the inputs are not changed.
+    '''
+
+    defaults = yahoo_brk_aliases()
+
+    merged = merge_symbol_aliases({}, defaults)
+
+    assert merged == yahoo_brk_aliases()
+    assert merged is not defaults
+    assert merge_symbol_aliases({}, {}) == {}
+
+# ** test: merge_symbol_aliases_configured_wins
+@pytest.mark.parametrize('provider_ticker, canonical_id', [
+    ('BRK-B', 'FILE.B'),
+    ('BRKB.X', 'BRK.B'),
+])
+def test_merge_symbol_aliases_configured_wins(provider_ticker: str, canonical_id: str) -> None:
+    '''
+    Test that a configured alias with a default's provider ticker or canonical id drops that default in both directions.
+
+    :param provider_ticker: The configured provider ticker.
+    :type provider_ticker: str
+    :param canonical_id: The configured canonical id.
+    :type canonical_id: str
+    '''
+
+    configured = {provider_ticker: SymbolAlias(provider=YAHOO_CHART, provider_ticker=provider_ticker, canonical_id=canonical_id)}
+
+    merged = merge_symbol_aliases(configured, yahoo_brk_aliases())
+
+    assert merged == configured
+    assert to_provider_ticker(canonical_id, merged) == provider_ticker
+    if provider_ticker != 'BRK-B':
+        assert to_provider_ticker('BRK-B', merged) == 'BRK-B'
+        assert to_canonical_id('BRK-B', merged) == 'BRK-B'
+
+# ** test: merge_symbol_aliases_unrelated_defaults
+def test_merge_symbol_aliases_keeps_unrelated_defaults_first() -> None:
+    '''
+    Test that a default no configured alias covers is kept, ahead of the configured aliases.
+    '''
+
+    configured = {'BF-B': SymbolAlias(provider=YAHOO_CHART, provider_ticker='BF-B', canonical_id='BF.B')}
+
+    merged = merge_symbol_aliases(configured, yahoo_brk_aliases())
+
+    assert list(merged) == ['BRK-B', 'BF-B']
 
 # *** testers
 

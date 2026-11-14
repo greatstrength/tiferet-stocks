@@ -19,20 +19,18 @@ from ..domain import (
     to_provider_ticker,
 )
 from ..interfaces import PriceService, SymbolAliasService
+from .symbol import SymbolAliasEvent
 
 # *** events
 
 # ** event: get_history
-class GetHistory(DomainEvent):
+class GetHistory(SymbolAliasEvent):
     '''
     Domain event to get the daily price history for one symbol and date range.
     '''
 
     # * attribute: price_service
     price_service: PriceService
-
-    # * attribute: symbol_alias_service
-    symbol_alias_service: SymbolAliasService
 
     # * init
     def __init__(self, price_service: PriceService, symbol_alias_service: SymbolAliasService) -> None:
@@ -90,7 +88,7 @@ class GetHistory(DomainEvent):
         )
 
         # Get the history from the configured provider under the provider ticker; an id with no alias passes through.
-        aliases = self.symbol_alias_service.get_aliases(YAHOO_CHART)
+        aliases = self.get_aliases(YAHOO_CHART)
         history = self.price_service.get_history(to_provider_ticker(symbol, aliases), first.isoformat(), last.isoformat())
 
         # Raise the catalogued error when the provider failed for the symbol.

@@ -6,6 +6,7 @@
 from .history import GetHistory
 from .quote import GetQuotes
 from .symbol import (
+    SymbolAliasEvent,
     SymbolLookupEvent,
     GetSymbol,
     ResolveSymbols,

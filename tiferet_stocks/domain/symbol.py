@@ -191,6 +191,34 @@ class SymbolLookup(DomainObject):
 # ** typevar: T
 T = TypeVar('T')
 
+# ** function: merge_symbol_aliases
+def merge_symbol_aliases(configured: Dict[str, SymbolAlias], defaults: Dict[str, SymbolAlias]) -> Dict[str, SymbolAlias]:
+    '''
+    Return one alias map for a provider in which the configured aliases take precedence over the defaults.
+
+    A default is dropped when a configured alias has its provider ticker or its canonical id, so the merged map is
+    safe to use in both directions.
+
+    :param configured: The configured aliases for one provider, keyed by provider ticker.
+    :type configured: Dict[str, SymbolAlias]
+    :param defaults: The default aliases for the same provider, keyed by provider ticker.
+    :type defaults: Dict[str, SymbolAlias]
+    :return: A new map holding the surviving defaults followed by the configured aliases, keyed by provider ticker.
+    :rtype: Dict[str, SymbolAlias]
+    '''
+
+    # Keep a default only when no configured alias covers its provider ticker or canonical id.
+    canonical_ids = {alias.canonical_id for alias in configured.values()}
+    merged = {
+        provider_ticker: alias
+        for provider_ticker, alias in defaults.items()
+        if provider_ticker not in configured and alias.canonical_id not in canonical_ids
+    }
+
+    # Add the configured aliases after the surviving defaults.
+    merged.update(configured)
+    return merged
+
 # ** function: to_provider_ticker
 def to_provider_ticker(symbol_id: str, aliases: Dict[str, SymbolAlias]) -> str:
     '''

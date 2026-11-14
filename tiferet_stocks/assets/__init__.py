@@ -85,10 +85,8 @@ from .app import (
     STOCKS_DEFAULT_SERVICES,
 )
 from .symbol import (
-    YAHOO_DEFAULT_SYMBOL_ALIASES_ID,
     YAHOO_BRK_B_SYMBOL_ALIAS_ID,
     YAHOO_BRK_B_SYMBOL_ALIAS_DATA,
     YAHOO_DEFAULT_SYMBOL_ALIASES,
-    STOCKS_DEFAULT_CONSTANTS,
 )
 from . import app, cli, core, error, feature, symbol

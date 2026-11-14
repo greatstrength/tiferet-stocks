@@ -38,6 +38,7 @@ from .symbol import (
     Symbol,
     SymbolWarning,
     SymbolLookup,
+    merge_symbol_aliases,
     to_provider_ticker,
     to_provider_tickers,
     to_canonical_id,

@@ -166,10 +166,6 @@ def create_cli_request_context(interface_id: str,
     id_field='service_id',
 )
 @add_default_catalog(
-    a.symbol.STOCKS_DEFAULT_CONSTANTS,
-    core_assets.app.APP_CONSTANT_CACHE_PREFIX,
-)
-@add_default_catalog(
     a.app.STOCKS_DEFAULT_APP_SESSIONS,
     core_assets.app.APP_SESSION_CACHE_PREFIX,
     model=AppSession,
@@ -182,10 +178,9 @@ def build_cache(cache: Dict[str, Any] = None) -> CacheContext:
     Build the stocks CLI bootstrap cache.
 
     Extends the standard ``app.build_cache``, as core's admin build_cache
-    does, with the stocks errors, features, app sessions, app constants
-    (the Yahoo default symbol aliases) and services, and the stocks CLI
-    commands under the stocks cache prefix, so every stocks command runs
-    with no configuration file.
+    does, with the stocks errors, features, app sessions and services,
+    and the stocks CLI commands under the stocks cache prefix, so every
+    stocks command runs with no configuration file.
 
     :param cache: An optional initial cache dictionary for the root namespace.
     :type cache: Dict[str, Any] | None

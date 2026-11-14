@@ -25,6 +25,7 @@ from tiferet_stocks.events import (
     GetSymbol,
     ListExchanges,
     ResolveSymbols,
+    SymbolAliasEvent,
     SymbolLookupEvent,
 )
 from tiferet_stocks.interfaces import SymbolAliasService, SymbolLookupService
@@ -121,13 +122,13 @@ def test_get_symbol_ticker_mismatch(symbol_lookup_service: mock.Mock) -> None:
     :type symbol_lookup_service: mock.Mock
     '''
 
-    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BRK.B': Symbol(id='BRK-B', exchange='NYSE')})
+    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BF.B': Symbol(id='BF-B', exchange='NYSE')})
 
-    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='BRK.B')
+    lookup = DomainEvent.handle(GetSymbol, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service()}, id='BF.B')
 
     assert lookup.symbols == {}
     assert lookup.failures[0].reason == 'symbol_mismatch'
-    assert lookup.failures[0].detail == 'expected ticker BRK.B, actual ticker BRK-B'
+    assert lookup.failures[0].detail == 'expected ticker BF.B, actual ticker BF-B'
 
 # ** test: get_symbol_ticker_case_insensitive
 def test_get_symbol_ticker_case_insensitive(symbol_lookup_service: mock.Mock) -> None:
@@ -390,6 +391,84 @@ def test_get_symbol_other_failures_are_data(symbol_lookup_service: mock.Mock, re
 
     assert lookup.symbols == {}
     assert lookup.failures[0].reason == reason
+
+# ** test: alias_event_yahoo_defaults
+def test_alias_event_hydrates_yahoo_defaults_with_nothing_configured() -> None:
+    '''
+    Test that with no configured aliases the Yahoo defaults from the assets hydrate with the provider and the provider ticker from the group key.
+    '''
+
+    service = alias_service()
+
+    aliases = SymbolAliasEvent(service).get_aliases('yahoo_chart')
+
+    service.get_aliases.assert_called_once_with('yahoo_chart')
+    assert aliases == brk_aliases()
+
+# ** test: alias_event_other_provider
+def test_alias_event_other_provider_gets_no_yahoo_defaults() -> None:
+    '''
+    Test that another provider gets only its configured aliases, never the Yahoo defaults.
+    '''
+
+    assert SymbolAliasEvent(alias_service()).get_aliases('static') == {}
+
+# ** test: alias_event_configured_wins
+@pytest.mark.parametrize('provider_ticker, canonical_id', [
+    ('BRK-B', 'BRKB.X'),
+    ('BRKB.X', 'BRK.B'),
+])
+def test_alias_event_configured_alias_wins(provider_ticker: str, canonical_id: str) -> None:
+    '''
+    Test that a configured alias covering a default's provider ticker or canonical id drops that default, and other configured aliases are kept.
+
+    :param provider_ticker: The configured provider ticker.
+    :type provider_ticker: str
+    :param canonical_id: The configured canonical id.
+    :type canonical_id: str
+    '''
+
+    configured = {
+        provider_ticker: SymbolAlias(provider='yahoo_chart', provider_ticker=provider_ticker, canonical_id=canonical_id),
+        'BF-B': SymbolAlias(provider='yahoo_chart', provider_ticker='BF-B', canonical_id='BF.B'),
+    }
+
+    assert SymbolAliasEvent(alias_service(configured)).get_aliases('yahoo_chart') == configured
+
+# ** test: resolve_symbols_configured_ticker
+def test_resolve_symbols_configured_ticker_replaces_default(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that a configured alias sending BRK.B under another ticker is the only ticker looked up.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    configured = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BRKB.X': Symbol(id='BRKB.X', exchange='NYSE')})
+
+    lookup = DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service(configured)}, ids=['BRK.B'])
+
+    symbol_lookup_service.lookup.assert_called_once_with(['BRKB.X'])
+    assert lookup.symbols['BRK.B'].id == 'BRK.B'
+
+# ** test: resolve_symbols_raw_ticker_with_configured_ticker
+def test_resolve_symbols_raw_default_ticker_passes_through_when_configured_elsewhere(symbol_lookup_service: mock.Mock) -> None:
+    '''
+    Test that with BRK.B configured as BRKB.X a raw BRK-B request resolves as BRK-B with no symbol_mismatch.
+
+    :param symbol_lookup_service: The mock symbol lookup service.
+    :type symbol_lookup_service: mock.Mock
+    '''
+
+    configured = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    symbol_lookup_service.lookup.return_value = SymbolLookup(symbols={'BRK-B': Symbol(id='BRK-B', exchange='NYSE')})
+
+    lookup = DomainEvent.handle(ResolveSymbols, dependencies={'symbol_lookup_service': symbol_lookup_service, 'symbol_alias_service': alias_service(configured)}, ids=['BRK-B'])
+
+    symbol_lookup_service.lookup.assert_called_once_with(['BRK-B'])
+    assert lookup.symbols['BRK-B'].id == 'BRK-B'
+    assert lookup.failures == []
 
 # *** testers
 

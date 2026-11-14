@@ -221,6 +221,58 @@ def test_get_quotes_empty_symbols_reads_no_aliases(price_service: mock.Mock) -> 
     aliases.get_aliases.assert_not_called()
     price_service.get_quotes.assert_not_called()
 
+# ** test: get_quotes_yahoo_default_alias
+def test_get_quotes_yahoo_default_alias_with_nothing_configured(price_service: mock.Mock) -> None:
+    '''
+    Test that BRK.B is quoted as BRK-B through the Yahoo default alias when no alias is configured.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    price_service.get_quotes.return_value = QuoteList(quotes=[Quote(symbol_id='BRK-B', price=589.83, source='yahoo_chart')])
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['BRK.B'])
+
+    price_service.get_quotes.assert_called_once_with(['BRK-B'])
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B']
+
+# ** test: get_quotes_configured_ticker
+def test_get_quotes_configured_ticker_replaces_default(price_service: mock.Mock) -> None:
+    '''
+    Test that a configured alias sending BRK.B under another ticker replaces the Yahoo default, so BRK-B is never sent.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    configured = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    price_service.get_quotes.return_value = QuoteList(quotes=[Quote(symbol_id='BRKB.X', price=589.83, source='yahoo_chart')])
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B'])
+
+    price_service.get_quotes.assert_called_once_with(['BRKB.X'])
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B']
+
+# ** test: get_quotes_raw_ticker_with_configured_ticker
+def test_get_quotes_raw_default_ticker_passes_through_when_configured_elsewhere(price_service: mock.Mock) -> None:
+    '''
+    Test that with BRK.B configured as BRKB.X a raw BRK-B request is sent and answered as BRK-B, not re-keyed to BRK.B.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    configured = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    price_service.get_quotes.return_value = QuoteList(
+        quotes=[Quote(symbol_id='BRKB.X', price=589.83, source='yahoo_chart'), Quote(symbol_id='BRK-B', price=589.83, source='yahoo_chart')],
+    )
+
+    quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service(configured)}, symbols=['BRK.B', 'BRK-B'])
+
+    price_service.get_quotes.assert_called_once_with(['BRKB.X', 'BRK-B'])
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'BRK-B']
+
 # *** testers
 
 # ** tester: test_get_quotes_event

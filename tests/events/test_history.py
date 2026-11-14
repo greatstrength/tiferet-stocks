@@ -258,6 +258,24 @@ def test_get_history_control_without_alias(price_service: mock.Mock) -> None:
     price_service.get_history.assert_called_once_with('AAPL', '2026-10-20', '2026-10-20')
     assert bars == [bar]
 
+# ** test: get_history_configured_ticker
+def test_get_history_configured_ticker_replaces_default(price_service: mock.Mock) -> None:
+    '''
+    Test that a configured alias fetching BRK.B under another ticker replaces the Yahoo default, so BRK-B is never sent.
+
+    :param price_service: The mock price service.
+    :type price_service: mock.Mock
+    '''
+
+    configured = {'BRKB.X': SymbolAlias(provider='yahoo_chart', provider_ticker='BRKB.X', canonical_id='BRK.B')}
+    bar = PriceBar(symbol_id='BRKB.X', date='2026-10-20', open=1, high=2, low=1, close=2)
+    price_service.get_history.return_value = PriceHistoryAggregate(symbol_id='BRKB.X', start='2026-10-20', end='2026-10-20', bars=[bar])
+
+    bars = run(price_service, aliases=configured, symbol='BRK.B', start='2026-10-20', end='2026-10-20')
+
+    price_service.get_history.assert_called_once_with('BRKB.X', '2026-10-20', '2026-10-20')
+    assert [b.symbol_id for b in bars] == ['BRK.B']
+
 # *** testers
 
 # ** tester: test_get_history_event

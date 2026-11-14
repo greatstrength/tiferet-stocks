@@ -158,11 +158,11 @@ def test_existing_raises_unchanged(reference) -> None:
     assert history.value.error_code == 'HISTORY_UNAVAILABLE'
     assert history.value.message == 'No price history is available for ZZZZQ: not_found.'
 
-# ** test: missing_seed_passes_through
-def test_missing_seed_passes_through(tmp_path, monkeypatch) -> None:
+# ** test: missing_seed_uses_yahoo_defaults
+def test_missing_seed_uses_yahoo_defaults(tmp_path, monkeypatch) -> None:
     '''
-    Test that with no local seed file the alias map is empty: session start succeeds, nothing is created, and BRK.B is
-    requested as given.
+    Test that with no local seed file nothing is configured: session start succeeds, nothing is created, and the events
+    send BRK.B as BRK-B through the Yahoo default alias.
 
     :param tmp_path: A temporary directory holding only a copy of the reference config.
     :type tmp_path: pathlib.Path
@@ -175,11 +175,10 @@ def test_missing_seed_passes_through(tmp_path, monkeypatch) -> None:
     requested = []
     with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
         app = App('stocks_client', app_config=str(tmp_path / 'config.yml'))
-        with pytest.raises(TiferetAPIError) as exc_info:
-            app.run('quotes.get', data={'symbols': ['BRK.B']})
+        quotations = app.run('quotes.get', data={'symbols': ['BRK.B']})
 
-    assert requested == ['cookie', 'crumb', 'quote:BRK.B']
-    assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
+    assert requested == ['cookie', 'crumb', 'quote:BRK-B']
+    assert quotations.get_quote('BRK.B').price == 592.94
     assert not (tmp_path / 'data').exists()
 
 # ** test: alias_artifact_wired_independently
@@ -211,3 +210,27 @@ def test_alias_artifact_wired_independently(tmp_path, monkeypatch) -> None:
     assert quotations.get_quote('APPLE').symbol_id == 'APPLE'
     for service_id in (a.SYMBOL_LOOKUP_SERVICE_ID, a.PRICE_SERVICE_ID):
         assert config['services'][service_id] == reference['services'][service_id]
+
+# ** test: app_configured_ticker_replaces_default
+def test_app_configured_ticker_replaces_yahoo_default(tmp_path, monkeypatch) -> None:
+    '''
+    Test that through the programmatic App a symbols file sending BRK.B as BRKB.X replaces the Yahoo default in both
+    directions: BRKB.X goes out, BRK-B is never sent for BRK.B, and a raw BRK-B request stays BRK-B.
+
+    :param tmp_path: A temporary directory holding a copy of the reference config and the symbols file.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: The pytest monkeypatch fixture.
+    :type monkeypatch: pytest.MonkeyPatch
+    '''
+
+    (tmp_path / 'config.yml').write_bytes((ROOT_PATH / 'config.yml').read_bytes())
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'symbols.yml').write_text(yaml.safe_dump({'aliases': [{'provider': 'yahoo_chart', 'provider_ticker': 'BRKB.X', 'canonical_id': 'BRK.B'}]}))
+    monkeypatch.chdir(tmp_path)
+    requested = []
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
+        quotations = App('stocks_client', app_config=str(tmp_path / 'config.yml')).run('quotes.get', data={'symbols': ['BRK.B', 'BRK-B']})
+
+    assert requested == ['cookie', 'crumb', 'quote:BRKB.X,BRK-B']
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK-B']
+    assert [(failure.symbol_id, failure.reason) for failure in quotations.failures] == [('BRK.B', 'not_found')]

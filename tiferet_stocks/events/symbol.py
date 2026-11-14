@@ -19,6 +19,7 @@ from ..domain import (
     Symbol,
     SymbolAlias,
     SymbolLookup,
+    merge_symbol_aliases,
     rekey_symbol_ids,
     to_provider_tickers,
 )
@@ -54,17 +55,58 @@ def apply_symbol_alias(symbol: Symbol, aliases: Dict[str, SymbolAlias]) -> Symbo
 
 # *** events
 
+# ** event: symbol_alias_event
+class SymbolAliasEvent(DomainEvent):
+    '''
+    Base event providing the shared SymbolAliasService dependency and the alias reconciliation for events that send provider tickers.
+    '''
+
+    # * attribute: symbol_alias_service
+    symbol_alias_service: SymbolAliasService
+
+    # * init
+    def __init__(self, symbol_alias_service: SymbolAliasService) -> None:
+        '''
+        Initialize the event with its shared symbol alias service dependency.
+
+        :param symbol_alias_service: The symbol alias service shared across alias-aware events.
+        :type symbol_alias_service: SymbolAliasService
+        '''
+
+        # Set the symbol alias service dependency.
+        self.symbol_alias_service = symbol_alias_service
+
+    # * method: get_aliases
+    def get_aliases(self, provider: str) -> Dict[str, SymbolAlias]:
+        '''
+        Return one merged alias map for a provider: the configured aliases, which take precedence, and the default aliases from the assets.
+
+        The caller uses the returned map for both the outbound and the inbound direction of one call.
+
+        :param provider: The provider id, such as yahoo_chart.
+        :type provider: str
+        :return: The merged aliases for that provider, keyed by provider ticker.
+        :rtype: Dict[str, SymbolAlias]
+        '''
+
+        # Hydrate the provider's default aliases from the assets; their data carries neither provider ticker nor provider.
+        defaults = a.symbol.YAHOO_DEFAULT_SYMBOL_ALIASES if provider == YAHOO_CHART else {}
+        default_aliases = {
+            provider_ticker: SymbolAlias(provider=provider, provider_ticker=provider_ticker, **data)
+            for provider_ticker, data in defaults.items()
+        }
+
+        # Merge them with the configured aliases, which take precedence.
+        return merge_symbol_aliases(self.symbol_alias_service.get_aliases(provider), default_aliases)
+
 # ** event: symbol_lookup_event
-class SymbolLookupEvent(DomainEvent):
+class SymbolLookupEvent(SymbolAliasEvent):
     '''
     Shared symbol lookup dependency and resolution rules for symbol events.
     '''
 
     # * attribute: symbol_lookup_service
     symbol_lookup_service: SymbolLookupService
-
-    # * attribute: symbol_alias_service
-    symbol_alias_service: SymbolAliasService
 
     # * init
     def __init__(self, symbol_lookup_service: SymbolLookupService, symbol_alias_service: SymbolAliasService) -> None:
@@ -101,7 +143,7 @@ class SymbolLookupEvent(DomainEvent):
         exchanges = exchanges or {}
 
         # Read the aliases first, then look up the provider tickers; an id with no alias passes through.
-        aliases = self.symbol_alias_service.get_aliases(YAHOO_CHART)
+        aliases = self.get_aliases(YAHOO_CHART)
         provider_ids = dict(zip(requested, to_provider_tickers(requested, aliases)))
         lookup = self.symbol_lookup_service.lookup(list(dict.fromkeys(provider_ids.values())))
 
