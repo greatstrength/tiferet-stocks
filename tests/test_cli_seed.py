@@ -233,6 +233,32 @@ def test_configured_repeated_command_resolves_last_wins(no_config, capsys) -> No
     main(argv=['exchanges', 'list'])
     assert 'NYSE_ARCA' in capsys.readouterr().out
 
+# ** test: session_cli_service_reads_separate_cli_config
+def test_session_cli_service_reads_separate_cli_config(no_config, capsys) -> None:
+    '''
+    A stocks_cli session cli_service pointed at a separate CLI file reads its commands from there, over the cached stocks commands.
+    '''
+
+    (no_config / 'commands.yml').write_text(yaml.safe_dump({'cli': {'cmds': {'exchanges': {'list': {
+        'group_key': 'exchanges',
+        'key': 'list',
+        'name': 'Exchanges List',
+        'description': 'List the exchanges, from the separate CLI file.',
+    }}}}}))
+    (no_config / 'config.yml').write_text(yaml.safe_dump({'sessions': {'stocks_cli': {'name': 'Mine', 'services': {'cli_service': {
+        'module_path': 'tiferet.repos.cli',
+        'class_name': 'CliConfigRepository',
+        'params': {'cli_config': str(no_config / 'commands.yml')},
+    }}}}}))
+
+    with pytest.raises(SystemExit) as exited:
+        main(argv=['exchanges', '--help'])
+    assert exited.value.code == 0
+    assert 'List the exchanges, from the separate CLI file.' in capsys.readouterr().out
+
+    main(argv=['exchanges', 'list'])
+    assert 'NYSE_ARCA' in capsys.readouterr().out
+
 # ** test: list_commands_other_faults
 def test_list_commands_propagates_other_faults() -> None:
     '''

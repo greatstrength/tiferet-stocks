@@ -6,6 +6,7 @@
 from importlib import metadata
 from pathlib import Path
 import subprocess
+import zipfile
 
 # ** infra
 import pytest
@@ -141,6 +142,21 @@ def test_installed_wheel_uses_site_packages_and_released_beta(installed_cli):
     assert 'site-packages/tiferet/' in lines[2]
     assert lines[3] == expected_stocks
     assert installed_cli['script'].is_file()
+
+# ** test: wheel_ships_no_config
+def test_wheel_ships_no_config(installed_cli):
+    '''
+    The wheel ships Python modules and metadata only: no config.yml, no symbols file and no other YAML or JSON data.
+
+    :param installed_cli: The offline noneditable installed console environment.
+    :type installed_cli: dict
+    '''
+
+    with zipfile.ZipFile(installed_cli['wheel']) as wheel:
+        names = wheel.namelist()
+
+    assert [name for name in names if name.endswith(('.yml', '.yaml', '.json'))] == []
+    assert all(name.endswith('.py') or '.dist-info/' in name for name in names)
 
 # ** test: installed_console
 @pytest.mark.parametrize('explicit', [True, False])

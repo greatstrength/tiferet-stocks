@@ -26,6 +26,8 @@ Repository = "https://github.com/greatstrength/tiferet-stocks"
 [project.optional-dependencies]
 test = [
     "pytest>=8.3.3",
+    "setuptools>=61.0",
+    "wheel",
 ]
 
 [tool.setuptools.dynamic]

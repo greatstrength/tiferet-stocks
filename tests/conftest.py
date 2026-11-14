@@ -68,4 +68,4 @@ def installed_cli(tmp_path_factory):
         f'Installed console script missing at {script}. '
         f'pip stdout:\n{installed.stdout}\npip stderr:\n{installed.stderr}'
     )
-    return {'python': python, 'script': script, 'env': env, 'root': sandbox, 'site': site_packages}
+    return {'python': python, 'script': script, 'env': env, 'root': sandbox, 'site': site_packages, 'wheel': wheel}
