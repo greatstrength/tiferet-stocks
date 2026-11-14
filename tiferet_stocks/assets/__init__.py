@@ -37,6 +37,7 @@ from .core import (
     MOVE_WATCHLIST_SYMBOL_EVENT_ID,
     WATCHLISTS_MOVE_FEATURE_ID,
     QUOTES_HISTORY_FEATURE_ID,
+    create_default_symbol_alias_data,
 )
 from .error import (
     QUOTES_UNAVAILABLE_ID,
@@ -74,4 +75,20 @@ from .cli import (
     WATCHLISTS_ADD_CLI_CMD_ID,
     WATCHLISTS_REMOVE_CLI_CMD_ID,
     WATCHLISTS_MOVE_CLI_CMD_ID,
+    STOCKS_CLI_COMMAND_CACHE_PREFIX,
+    STOCKS_DEFAULT_COMMANDS,
 )
+from .feature import STOCKS_DEFAULT_FEATURES
+from .app import (
+    STOCKS_CLIENT_SESSION_ID,
+    STOCKS_DEFAULT_APP_SESSIONS,
+    STOCKS_DEFAULT_SERVICES,
+)
+from .symbol import (
+    YAHOO_DEFAULT_SYMBOL_ALIASES_ID,
+    YAHOO_BRK_B_SYMBOL_ALIAS_ID,
+    YAHOO_BRK_B_SYMBOL_ALIAS_DATA,
+    YAHOO_DEFAULT_SYMBOL_ALIASES,
+    STOCKS_DEFAULT_CONSTANTS,
+)
+from . import app, cli, core, error, feature, symbol

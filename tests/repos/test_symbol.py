@@ -141,6 +141,33 @@ def test_alias_repo_filters_by_provider(tmp_path: Path, extension: str) -> None:
     assert aliases['BF-B'].canonical_id == 'BF.B'
     assert repo.get_aliases('other_provider') == {}
 
+# ** test: alias_repo_yahoo_defaults
+def test_alias_repo_yahoo_defaults(tmp_path: Path) -> None:
+    '''
+    Test that the Yahoo default aliases hydrate for the Yahoo provider only, with no file, that file rows add others, and that a file row wins a shared provider ticker.
+
+    :param tmp_path: The temporary directory.
+    :type tmp_path: Path
+    '''
+
+    defaults = {'BRK-B': {'canonical_id': 'BRK.B'}}
+    missing = tmp_path / 'missing.yml'
+    repo = SymbolAliasRepository(symbol_config=str(missing), yahoo_default_symbol_aliases=defaults)
+
+    assert {ticker: (alias.provider, alias.provider_ticker, alias.canonical_id) for ticker, alias in repo.get_aliases('yahoo_chart').items()} == {'BRK-B': ('yahoo_chart', 'BRK-B', 'BRK.B')}
+    assert repo.get_aliases('other') == {}
+    assert not missing.exists()
+
+    path = tmp_path / 'symbols.yml'
+    path.write_text(json.dumps({'aliases': [
+        {'provider': 'yahoo_chart', 'provider_ticker': 'BRK-B', 'canonical_id': 'FILE.B'},
+        {'provider': 'yahoo_chart', 'provider_ticker': 'BF-B', 'canonical_id': 'BF.B'},
+    ]}))
+    aliases = SymbolAliasRepository(symbol_config=str(path), yahoo_default_symbol_aliases=defaults).get_aliases('yahoo_chart')
+
+    assert {ticker: alias.canonical_id for ticker, alias in aliases.items()} == {'BRK-B': 'FILE.B', 'BF-B': 'BF.B'}
+    assert defaults == {'BRK-B': {'canonical_id': 'BRK.B'}}
+
 # ** test: alias_repo_empty_documents
 @pytest.mark.parametrize('content', ['', 'other: {}\n', 'aliases:\n', 'aliases: []\n'])
 def test_alias_repo_empty_documents(tmp_path: Path, content: str) -> None:

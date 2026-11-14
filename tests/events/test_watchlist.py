@@ -152,6 +152,48 @@ def test_changes_stamp_private_copy(service: mock.Mock,
     assert original.model_dump() == original_data
     service.save.assert_called_once_with(result)
 
+# ** test: add_symbol_create_if_missing
+@pytest.mark.parametrize('index, expected_ids', [
+    (-1, ['XLK']),
+    (0, ['XLK']),
+])
+def test_add_symbol_create_if_missing(service: mock.Mock, index: int, expected_ids: list) -> None:
+    '''
+    Create a missing watchlist, named by its id, only when the caller passes create.
+
+    :param service: The mock storage boundary.
+    :type service: mock.Mock
+    :param index: The requested final position.
+    :type index: int
+    :param expected_ids: The resulting ordered ids.
+    :type expected_ids: list
+    '''
+
+    service.get.return_value = None
+    result = DomainEvent.handle(AddWatchlistSymbol, dependencies={'watchlist_service': service}, id='new', symbol_id='XLK', index=index, create=True, at='2026-11-14T10:00:00-07:00')
+
+    assert result.id == 'new'
+    assert result.name == 'new'
+    assert result.symbol_ids == expected_ids
+    assert result.created_at == result.updated_at == '2026-11-14T10:00:00-07:00'
+    service.save.assert_called_once_with(result)
+
+# ** test: add_symbol_create_keeps_existing
+def test_add_symbol_create_keeps_existing(service: mock.Mock) -> None:
+    '''
+    Treat create as a no-op for an existing watchlist, keeping its name and duplicate checks.
+
+    :param service: The mock storage boundary.
+    :type service: mock.Mock
+    '''
+
+    result = DomainEvent.handle(AddWatchlistSymbol, dependencies={'watchlist_service': service}, id='one', symbol_id='XLK', create=True, at='2026-11-14T10:00:00-07:00')
+    assert result.name == 'One'
+    assert result.symbol_ids == ['SPY', 'QQQ', 'XLK']
+    with pytest.raises(TiferetError) as caught:
+        DomainEvent.handle(AddWatchlistSymbol, dependencies={'watchlist_service': service}, id='one', symbol_id='SPY', create=True)
+    assert caught.value.error_code == 'WATCHLIST_SYMBOL_EXISTS'
+
 # ** test: invalid_stamp_does_not_leak_changes
 @pytest.mark.parametrize('event, data', [
     (UpdateWatchlist, {'id': 'one', 'name': 'Changed', 'description': 'Changed'}),

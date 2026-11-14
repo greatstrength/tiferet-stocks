@@ -21,7 +21,7 @@ from tiferet_stocks.contexts import StocksCliRequestContext
 @pytest.fixture
 def cli_config(tmp_path):
     '''
-    Supply a real CLI catalog in a directory independent of process CWD.
+    Supply a copy of the reference app configuration in a directory independent of process CWD.
 
     :param tmp_path: The isolated temporary data directory.
     :type tmp_path: Path
@@ -31,7 +31,13 @@ def cli_config(tmp_path):
 
     source = Path(__file__).resolve().parents[1] / 'config.yml'
     config = yaml.safe_load(source.read_text())
-    config['services']['watchlist_service']['params']['watchlist_config'] = str(tmp_path / 'never-created.yml')
+    config['sessions']['stocks_cli']['services'] = {
+        'watchlist_service': {
+            'module_path': 'tiferet_stocks.repos.watchlist',
+            'class_name': 'WatchlistConfigRepository',
+            'params': {'watchlist_config': str(tmp_path / 'never-created.yml')},
+        },
+    }
     target = tmp_path / 'selected.yml'
     target.write_text(yaml.safe_dump(config, sort_keys=False))
     return target

@@ -11,11 +11,10 @@ from unittest import mock
 import pytest
 import yaml
 from tiferet import App, TiferetAPIError
-from tiferet.repos.cli import CliConfigRepository
 
 # ** app
 from tiferet_stocks import assets as a
-from tiferet_stocks.blueprints.cli import bind_cli_request, parse_cli_args_handler
+from tiferet_stocks.blueprints.cli import bind_cli_request, build_cache, get_stocks_cli_commands, parse_cli_args_handler
 
 # *** fixtures
 
@@ -29,9 +28,8 @@ def parser():
     :rtype: Callable
     '''
 
-    root = Path(__file__).resolve().parents[1]
-    repo = CliConfigRepository(cli_config=str(root / 'config.yml'))
-    return parse_cli_args_handler(list_commands=repo.list, get_parent_args=repo.get_parent_arguments)
+    cache = build_cache()
+    return parse_cli_args_handler(list_commands=lambda: get_stocks_cli_commands(cache), get_parent_args=lambda: [])
 
 # ** fixture: dispatch_context
 @pytest.fixture
@@ -60,8 +58,8 @@ def dispatch_context(tmp_path: Path, monkeypatch):
     config_path = tmp_path / 'config.yml'
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(tmp_path)
-    repo = CliConfigRepository(cli_config=str(config_path))
-    parse = parse_cli_args_handler(list_commands=repo.list, get_parent_args=repo.get_parent_arguments)
+    cache = build_cache()
+    parse = parse_cli_args_handler(list_commands=lambda: get_stocks_cli_commands(cache), get_parent_args=lambda: [])
     app = App('stocks_client', app_config=str(config_path))
     app.run('watchlists.create', data={'id': 'etfs', 'name': 'ETFs', 'symbol_ids': ['SPY', 'QQQ'], 'at': '2026-11-06T14:00:00-07:00'})
     payload = (root / 'tests' / 'repos' / 'payloads' / 'spy.json').read_bytes()
@@ -81,8 +79,6 @@ def test_catalog_has_exactly_thirteen_feature_ids() -> None:
     Keep every public command id equal to its existing feature id.
     '''
 
-    root = Path(__file__).resolve().parents[1]
-    repo = CliConfigRepository(cli_config=str(root / 'config.yml'))
     expected = {
         a.QUOTES_GET_CLI_CMD_ID,
         a.QUOTES_HISTORY_CLI_CMD_ID,
@@ -98,14 +94,13 @@ def test_catalog_has_exactly_thirteen_feature_ids() -> None:
         a.WATCHLISTS_REMOVE_CLI_CMD_ID,
         a.WATCHLISTS_MOVE_CLI_CMD_ID,
     }
-    commands = repo.list()
+    commands = get_stocks_cli_commands(build_cache())
 
     assert len(commands) == len(expected) == 13
     assert {command.id for command in commands} == expected
-    config = yaml.safe_load((root / 'config.yml').read_text())
     for command in commands:
         assert command.id == f'{command.group_key}.{command.key}'
-        assert command.key in config['features'][command.group_key]
+        assert command.id in a.feature.STOCKS_DEFAULT_FEATURES
 
 # ** test: all_command_argument_contracts
 @pytest.mark.parametrize('argv, feature_id, expected', [
@@ -119,7 +114,8 @@ def test_catalog_has_exactly_thirteen_feature_ids() -> None:
     (['watchlists', 'create', 'new', '--name', 'New', '--description', 'Example', '--symbol-ids', 'SPY', 'QQQ'], 'watchlists.create', {'id': 'new', 'name': 'New', 'description': 'Example', 'symbol_ids': ['SPY', 'QQQ']}),
     (['watchlists', 'update', 'etfs', '--name', 'Renamed'], 'watchlists.update', {'id': 'etfs', 'name': 'Renamed', 'description': None}),
     (['watchlists', 'delete', 'etfs'], 'watchlists.delete', {'id': 'etfs'}),
-    (['watchlists', 'add', 'etfs', 'XLK'], 'watchlists.add', {'id': 'etfs', 'symbol_id': 'XLK', 'index': -1}),
+    (['watchlists', 'add', 'etfs', 'XLK'], 'watchlists.add', {'id': 'etfs', 'symbol_id': 'XLK', 'index': -1, 'create': False}),
+    (['watchlists', 'add', 'etfs', 'XLK', '--create'], 'watchlists.add', {'id': 'etfs', 'symbol_id': 'XLK', 'index': -1, 'create': True}),
     (['watchlists', 'remove', 'etfs', 'SPY'], 'watchlists.remove', {'id': 'etfs', 'symbol_id': 'SPY'}),
     (['watchlists', 'move', 'etfs', 'SPY'], 'watchlists.move', {'id': 'etfs', 'symbol_id': 'SPY', 'to_index': -1}),
 ])

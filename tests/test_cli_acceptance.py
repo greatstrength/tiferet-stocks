@@ -3,6 +3,7 @@
 # *** imports
 
 # ** core
+import json
 from pathlib import Path
 import subprocess
 
@@ -11,6 +12,7 @@ import pytest
 import yaml
 
 # ** app
+from tiferet_stocks import assets as a
 from tiferet_stocks.domain import EXCHANGES
 
 # *** functions
@@ -32,7 +34,7 @@ def assert_success(result):
 # ** function: assert_error
 def assert_error(result, error_id):
     '''
-    Require released core's configured domain-error exit and message.
+    Require released core's catalogued domain-error exit and the packaged catalog message.
 
     :param result: The domain answer or completed subprocess response under test.
     :type result: Any
@@ -43,7 +45,9 @@ def assert_error(result, error_id):
     '''
 
     assert result.returncode == 1, result.stdout + result.stderr
-    assert f'CLI-CONFIGURED-{error_id}: ' in result.stderr
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error['error_code'] == error_id
+    assert error['message'].startswith(a.error.DEFAULT_ERRORS[error_id]['message'][0]['text'].split('{')[0])
     assert 'Traceback' not in result.stdout + result.stderr
 
 # ** function: read_ids
@@ -79,18 +83,24 @@ def console(installed_cli, tmp_path):
     config = yaml.safe_load((root / 'config.yml').read_text())
     history = tmp_path / 'history.csv'
     history.write_text((root / 'tests/repos/fixtures/static_history.csv').read_text().replace('AAPL,', 'SPY,'))
-    config['services']['price_service'] = {
-        'module_path': 'tiferet_stocks.repos.static',
-        'class_name': 'StaticPriceRepository',
-        'params': {
-            'fixture_path': str(root / 'tests/repos/fixtures/static_prices.yml'),
-            'history_path': str(history),
+    storage = tmp_path / 'watchlists.yml'
+
+    # The CLI session's service attributes in the app config replace the cached provider and storage.
+    config['sessions']['stocks_cli']['services'] = {
+        'price_service': {
+            'module_path': 'tiferet_stocks.repos.static',
+            'class_name': 'StaticPriceRepository',
+            'params': {
+                'fixture_path': str(root / 'tests/repos/fixtures/static_prices.yml'),
+                'history_path': str(history),
+            },
+        },
+        'watchlist_service': {
+            'module_path': 'tiferet_stocks.repos.watchlist',
+            'class_name': 'WatchlistConfigRepository',
+            'params': {'watchlist_config': str(storage)},
         },
     }
-    storage = tmp_path / 'watchlists.yml'
-    config['services']['watchlist_service']['params']['watchlist_config'] = str(storage)
-    for error_id, error in config['errors'].items():
-        error['message'][0]['text'] = f"CLI-CONFIGURED-{error_id}: " + error['message'][0]['text']
     config_path = tmp_path / 'selected.yml'
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     seed = {

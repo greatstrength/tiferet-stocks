@@ -254,7 +254,7 @@ class DeleteWatchlist(WatchlistEvent):
 # ** event: add_watchlist_symbol
 class AddWatchlistSymbol(WatchlistEvent):
     '''
-    Applies one ordered-symbol change without fetching market data.
+    Applies one ordered-symbol change without fetching market data, optionally creating a missing watchlist.
     '''
 
     # * method: execute
@@ -263,17 +263,20 @@ class AddWatchlistSymbol(WatchlistEvent):
                 id: str,
                 symbol_id: str,
                 index: int = -1,
+                create: bool = False,
                 at: str | None = None,
                 **kwargs) -> WatchlistAggregate:
         '''
         Check the change before calling the aggregate and saving a copy.
 
-        :param id: The existing watchlist key.
+        :param id: The watchlist key.
         :type id: str
         :param symbol_id: The ticker to change.
         :type symbol_id: str
         :param index: The final zero-based position, or -1 for the end.
         :type index: int
+        :param create: Create the watchlist, named by its id, when it does not exist; otherwise a missing watchlist fails.
+        :type create: bool
         :param at: An optional timestamp override.
         :type at: str | None
         :param kwargs: Additional feature parameters.
@@ -282,13 +285,20 @@ class AddWatchlistSymbol(WatchlistEvent):
         :rtype: WatchlistAggregate
         '''
 
+        # A missing watchlist fails unless the caller asked to create it.
+        existing = self.watchlist_service.get(id)
+        self.verify(expression=existing is not None or bool(create), error_code=a.error.WATCHLIST_NOT_FOUND_ID, id=id)
+
         # Precheck catalogued outcomes against the unchanged service result.
-        existing = self.require_watchlist(id)
-        self.verify(expression=symbol_id not in existing.symbol_ids, error_code=a.error.WATCHLIST_SYMBOL_EXISTS_ID, id=id, symbol_id=symbol_id)
+        if existing is not None:
+            self.verify(expression=symbol_id not in existing.symbol_ids, error_code=a.error.WATCHLIST_SYMBOL_EXISTS_ID, id=id, symbol_id=symbol_id)
         self.verify(expression=index >= -1, error_code=a.error.WATCHLIST_INDEX_OUT_OF_RANGE_ID, id=id, index=index)
 
-        # Work on a private copy so a later validation failure cannot leak edits.
-        watchlist = WatchlistAggregate.model_validate(existing.model_dump())
+        # Work on a private copy, or a new empty watchlist, so a later validation failure cannot leak edits.
+        if existing is not None:
+            watchlist = WatchlistAggregate.model_validate(existing.model_dump())
+        else:
+            watchlist = WatchlistAggregate(id=id, name=id, symbol_ids=[])
         watchlist.add_symbol(symbol_id, index=index)
 
         # Validate the stamp and persist only the completed change.

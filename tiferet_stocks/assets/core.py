@@ -1,8 +1,13 @@
 """Tiferet Stocks Assets Core
 
 Service, event, provider and feature ids used to wire the package in
-configuration.
+configuration, and the helpers that build default stocks asset data.
 """
+
+# *** imports
+
+# ** core
+from typing import Any, Dict
 
 # *** constants (ids_services)
 
@@ -114,3 +119,26 @@ WATCHLISTS_REMOVE_FEATURE_ID = 'watchlists.remove'
 
 # ** constant: watchlists_move_feature_id
 WATCHLISTS_MOVE_FEATURE_ID = 'watchlists.move'
+
+# *** functions
+
+# ** function: create_default_symbol_alias_data
+def create_default_symbol_alias_data(canonical_id: str) -> Dict[str, Any]:
+    '''
+    Build a default symbol alias definition dictionary.
+
+    The provider ticker and the provider are intentionally not parameters
+    here: the returned dict is always stored under its owning ``*_ID``
+    constant (the provider ticker) as a group-dict key, in its provider's
+    default aliases group, so embedding either a second time inside the
+    value would restate it. The symbol alias repository reinjects both when
+    hydrating the SymbolAlias.
+
+    :param canonical_id: The canonical symbol id, such as BRK.B.
+    :type canonical_id: str
+    :return: The symbol alias definition dictionary, without its provider ticker or provider.
+    :rtype: Dict[str, Any]
+    '''
+
+    # Assemble and return the symbol alias definition.
+    return {'canonical_id': canonical_id}
