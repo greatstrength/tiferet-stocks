@@ -32,9 +32,18 @@ from .symbol import (
     UNMAPPED_EXCHANGE,
     UNMAPPED_ASSET_TYPE,
     WARNING_REASONS,
+    YAHOO_CHART,
+    PROVIDERS,
+    SymbolAlias,
     Symbol,
     SymbolWarning,
     SymbolLookup,
+    to_provider_ticker,
+    to_provider_tickers,
+    to_canonical_id,
+    rekey_map,
+    rekey_symbol_id,
+    rekey_symbol_ids,
 )
 from .quotations import Quotations
 from .watchlist import Watchlist

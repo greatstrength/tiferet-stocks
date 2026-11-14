@@ -15,7 +15,7 @@ The whole package is one core domain. Read this before writing an RFP, before ju
 
 Tiferet Stocks' core domain is **answering what a symbol is and what it is worth, in the library's own provider-neutral vocabulary, from a market data provider chosen in configuration, and keeping named, ordered watchlists of symbol ids**.
 
-Three rules shape everything else. First, the domain is read-only except for watchlists: quotes, history, symbol lookups and the exchange list are returned to the caller and never written, cached to disk or stored. Second, provider vocabulary stops at the provider: the provider's exchange and instrument codes are translated into domain ids before any domain object is built, and no domain object carries a raw provider code. Third, nothing requested is silently dropped: every symbol a caller asks about comes back as a result or as a named failure.
+Three rules shape everything else. First, the domain is read-only except for watchlists: quotes, history, symbol lookups and the exchange list are returned to the caller and never written, cached to disk or stored. Second, provider vocabulary stops at the provider: the provider's exchange and instrument codes are translated into domain ids before any domain object is built, and no domain object carries a raw provider code. `SymbolAlias` is the deliberate exception to that rule: it carries only a provider-facing ticker, tagged by a provider id from the `PROVIDERS` list, never an exchange or instrument code. Third, nothing requested is silently dropped: every symbol a caller asks about comes back as a result or as a named failure.
 
 The domain has two fixed shapes:
 
@@ -46,7 +46,7 @@ Everything else is identical across the axes.
 
 **Catalogued error** - a named domain failure resolved to a configured message, raised as `TiferetError` (`tiferet/assets/core.py:596`), usually through an event's `verify` (`tiferet/events/core.py:54`). Distinct from a **model error**, a defect inside one model that is deliberately never catalogued (`ModelError`, `tiferet/domain/core.py:87`), and a **service error**, an infrastructure failure that is also never catalogued (`ServiceError`, `tiferet/interfaces/core.py:15`).
 
-**Symbol** - the domain object for one tradable or quotable instrument: id (the ticker, such as AAPL), exchange (optional), name, asset type and currency (default USD). There is no CUSIP field.
+**Symbol** - the domain object for one tradable or quotable instrument: id (the ticker, such as AAPL), exchange (optional), name, asset type, currency (default USD), and a restricted aliases collection. There is no CUSIP field. The collection holds at most one `SymbolAlias` per provider, and only for that symbol.
 
 **Ticker** - the symbol's id. Tickers are unique per exchange; the bare ticker is the v1 key, and a qualified key such as `NASDAQ:AAPL` is a possible future extension only.
 
@@ -55,6 +55,8 @@ Everything else is identical across the axes.
 **Asset type** - one value from `ASSET_TYPES`: equity, etf, mutual_fund, money_market_fund. An **ETF** is a Symbol whose asset type is etf; there is no separate ETF object. A **fund** here means a mutual fund or money market fund; funds have no exchange by rule.
 
 **Provider code** - a provider's own label for an exchange or instrument type, such as Yahoo's NYQ or EQUITY. Provider codes exist only inside the provider.
+
+**SymbolAlias** - a value object that maps a canonical symbol id (such as `BRK.B`) to a provider-facing ticker (such as `BRK-B`) for one provider id. The provider id is one value from `PROVIDERS`, a module-level list in the symbol module built with the same `Literal` pattern as `EXCHANGES`. The initial list includes `yahoo_chart`. This is the deliberate exception to the rule that no domain object carries a raw provider code: it carries only a provider-facing ticker, tagged by provider, never an exchange or instrument code. `SymbolAggregate.apply_alias` checks the value object against the symbol's aliases collection and sets `id` to the canonical symbol id; `id` is on `_SETTABLE_ATTRIBUTES` and is set after construction only by that method.
 
 **Code map** - a provider's translation from provider codes to exchange ids or asset types.
 
@@ -191,7 +193,7 @@ Toward release: tests run in CI on pull requests and pushes to main, and the pac
 
 Built once:
 - The read pipeline and its failure reporting: every requested ticker is a result or a named failure.
-- The translation rule: provider codes stop at the provider; unmapped exchange codes give an empty exchange plus a warning.
+- The translation rule: provider codes stop at the provider; unmapped exchange codes give an empty exchange plus a warning. `SymbolAlias` is the deliberate exception: it carries only a provider-facing ticker, tagged by provider, never an exchange or instrument code.
 - The watchlist rules: ordering, uniqueness, index handling and upsert, all on the aggregate.
 - The catalogued error set and the CLI wiring pattern.
 

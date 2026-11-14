@@ -2,6 +2,9 @@
 
 # *** imports
 
+# ** core
+import inspect
+
 # ** infra
 import pytest
 from pydantic import ValidationError
@@ -9,6 +12,7 @@ from tiferet import use_tester
 from tiferet.domain import ModelError
 
 # ** app
+from tiferet_stocks.domain import YAHOO_CHART, SymbolAlias
 from tiferet_stocks.mappers import SymbolAggregate, SymbolYahooObject
 from tiferet_stocks.repos.yahoo import YAHOO_EXCHANGE_MAP
 
@@ -58,17 +62,127 @@ def test_symbol_yahoo_object_map() -> None:
     assert symbol.exchange == 'NYSE_ARCA'
     assert symbol.asset_type == 'etf'
     assert symbol.currency == 'USD'
+    assert symbol.aliases == []
 
-# ** test: symbol_aggregate_is_read_only
-def test_symbol_aggregate_is_read_only() -> None:
+# ** test: symbol_aggregate_rejects_unsettable_attributes
+def test_symbol_aggregate_rejects_unsettable_attributes() -> None:
     '''
-    Test that a symbol aggregate allows no attribute changes through set_attribute.
+    Test that a symbol aggregate rejects set_attribute for every field except id.
     '''
 
     symbol = SymbolAggregate(id='AAPL', exchange='NASDAQ')
 
     with pytest.raises(ModelError):
         symbol.set_attribute('exchange', 'NYSE')
+    with pytest.raises(ModelError):
+        symbol.set_attribute('name', 'Apple')
+    with pytest.raises(ModelError):
+        symbol.set_attribute('aliases', [])
+
+# ** test: apply_alias_sets_id_from_provider_ticker
+def test_apply_alias_sets_id_from_provider_ticker() -> None:
+    '''
+    Test that apply_alias sets id from the provider ticker to the canonical id.
+    '''
+
+    alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='BRK-B', aliases=[alias])
+
+    symbol.apply_alias(alias)
+
+    assert symbol.id == 'BRK.B'
+    assert symbol.aliases == [alias]
+
+# ** test: apply_alias_keeps_canonical_id
+def test_apply_alias_keeps_canonical_id() -> None:
+    '''
+    Test that apply_alias leaves id unchanged when it is already the canonical id.
+    '''
+
+    alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='BRK.B', aliases=[alias])
+
+    symbol.apply_alias(alias)
+
+    assert symbol.id == 'BRK.B'
+
+# ** test: apply_alias_rejects_alias_not_in_collection
+def test_apply_alias_rejects_alias_not_in_collection() -> None:
+    '''
+    Test that apply_alias rejects an alias that is not in the collection.
+    '''
+
+    alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='BRK-B')
+
+    with pytest.raises(ModelError) as caught:
+        symbol.apply_alias(alias)
+
+    assert caught.value.error_code == 'ALIAS_NOT_IN_COLLECTION'
+    assert symbol.id == 'BRK-B'
+
+# ** test: add_alias_then_apply_alias
+def test_add_alias_then_apply_alias() -> None:
+    '''
+    Test that add_alias places the value object on the collection, and apply_alias then sets id.
+    '''
+
+    alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='BRK-B')
+
+    symbol.add_alias(alias)
+    assert symbol.aliases == [alias]
+    assert symbol.id == 'BRK-B'
+
+    symbol.apply_alias(alias)
+    assert symbol.id == 'BRK.B'
+
+# ** test: add_alias_rejects_second_alias_for_same_provider
+def test_add_alias_rejects_second_alias_for_same_provider() -> None:
+    '''
+    Test that add_alias rejects a second alias for a provider already on the collection.
+    '''
+
+    first = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    second = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='BRK.B', aliases=[first])
+
+    with pytest.raises(ModelError) as caught:
+        symbol.add_alias(second)
+
+    assert caught.value.error_code == 'ALIAS_PROVIDER_EXISTS'
+    assert symbol.aliases == [first]
+
+# ** test: add_alias_rejects_alias_for_another_symbol
+def test_add_alias_rejects_alias_for_another_symbol() -> None:
+    '''
+    Test that add_alias rejects an alias that does not belong to this symbol.
+    '''
+
+    alias = SymbolAlias(provider=YAHOO_CHART, provider_ticker='BRK-B', canonical_id='BRK.B')
+    symbol = SymbolAggregate(id='AAPL')
+
+    with pytest.raises(ModelError) as caught:
+        symbol.add_alias(alias)
+
+    assert caught.value.error_code == 'ALIAS_NOT_FOR_SYMBOL'
+    assert symbol.aliases == []
+
+# ** test: only_apply_alias_sets_id
+def test_only_apply_alias_sets_id() -> None:
+    '''
+    Test that apply_alias is the only SymbolAggregate method that sets id.
+    '''
+
+    apply_source = inspect.getsource(SymbolAggregate.apply_alias)
+    assert "set_attribute('id'" in apply_source
+
+    for name, value in vars(SymbolAggregate).items():
+        if name == 'apply_alias' or not callable(value):
+            continue
+        source = inspect.getsource(value)
+        assert "set_attribute('id'" not in source
+        assert 'set_attribute("id"' not in source
 
 # *** testers
 
@@ -77,7 +191,7 @@ def test_symbol_aggregate_is_read_only() -> None:
     type='aggregate',
     target_cls=SymbolAggregate,
     sample_data={'id': 'AAPL', 'exchange': 'NASDAQ', 'name': 'Apple Inc.', 'asset_type': 'equity', 'currency': 'USD'},
-    equality_fields=['id', 'exchange', 'name', 'asset_type', 'currency'],
+    equality_fields=['id', 'exchange', 'name', 'asset_type', 'currency', 'aliases'],
     set_attribute_params=[
         ('exchange', 'NYSE', 'ATTRIBUTE_NOT_SETTABLE'),
         ('name', 'Apple', 'ATTRIBUTE_NOT_SETTABLE'),
@@ -85,7 +199,7 @@ def test_symbol_aggregate_is_read_only() -> None:
 )
 class TestSymbolAggregate:
     '''
-    Bound aggregate tester for SymbolAggregate: constructible and read-only.
+    Bound aggregate tester for SymbolAggregate: constructible, with id set only by apply_alias.
     '''
 
     # * test: new
@@ -99,7 +213,7 @@ class TestSymbolAggregate:
     # * test: set_attribute
     def test_set_attribute(self, test_ctx, session):
         '''
-        Reject every attribute change.
+        Reject attribute changes that are not on the allow-list.
         '''
 
         test_ctx.assert_set_attribute()
@@ -112,7 +226,7 @@ class TestSymbolAggregate:
     aggregate_module_path='tiferet_stocks.mappers.symbol',
     aggregate_class_name='SymbolAggregate',
     aggregate_sample_data={'id': 'SPY', 'exchange': 'NYSE_ARCA', 'name': 'SPDR S&P 500 ETF Trust', 'asset_type': 'etf', 'currency': 'USD'},
-    equality_fields=['id', 'exchange', 'name', 'asset_type', 'currency'],
+    equality_fields=['id', 'exchange', 'name', 'asset_type', 'currency', 'aliases'],
 )
 class TestSymbolYahooObject:
     '''

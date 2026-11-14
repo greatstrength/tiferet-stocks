@@ -4,12 +4,13 @@
 
 # ** core
 from abc import abstractmethod
-from typing import List
+from typing import Dict, List
 
 # ** infra
 from tiferet.interfaces import Service
 
 # ** app
+from ..domain import SymbolAlias
 from ..mappers import SymbolLookup
 
 # *** interfaces
@@ -33,3 +34,24 @@ class SymbolLookupService(Service):
         '''
         # Not implemented.
         raise NotImplementedError('lookup method is required for SymbolLookupService.')
+
+# ** interface: symbol_alias_service
+class SymbolAliasService(Service):
+    '''
+    Service interface for reading provider ticker aliases from symbol configuration.
+    '''
+
+    # * method: get_aliases
+    @abstractmethod
+    def get_aliases(self, provider: str) -> Dict[str, SymbolAlias]:
+        '''
+        Return the aliases for one provider, keyed by provider ticker.
+
+        :param provider: The provider id, such as yahoo_chart.
+        :type provider: str
+        :return: The aliases for that provider, keyed by provider ticker.
+        :rtype: Dict[str, SymbolAlias]
+        '''
+
+        # Not implemented.
+        raise NotImplementedError('get_aliases method is required for SymbolAliasService.')

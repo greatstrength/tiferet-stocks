@@ -4,5 +4,5 @@
 
 # ** app
 from .price import PriceService
-from .symbol import SymbolLookupService
+from .symbol import SymbolAliasService, SymbolLookupService
 from .watchlist import WatchlistService

@@ -20,6 +20,7 @@ from ..domain import (
     BAD_PAYLOAD,
     UNMAPPED_EXCHANGE,
     UNMAPPED_ASSET_TYPE,
+    YAHOO_CHART,
     derive_change_pct,
     usable_number,
     QuoteFailure,
@@ -27,6 +28,7 @@ from ..domain import (
     Quotations,
     PriceBar,
     PriceHistory,
+    SymbolAlias,
     SymbolLookup,
     SymbolWarning,
 )
