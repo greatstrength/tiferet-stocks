@@ -335,6 +335,29 @@ def test_top_level_service_overrides_cached_service(tmp_path, monkeypatch, capsy
     out = capsys.readouterr().out
     assert 'SPY' in out and 'static' in out
 
+# ** test: top_level_symbol_alias_service
+def test_top_level_symbol_alias_service_reads_another_file(no_config, capsys) -> None:
+    '''
+    A config.yml top-level symbol_alias_service registration, outside any session, pointing symbol_config at another file makes the CLI use that file's aliases.
+    '''
+
+    (no_config / 'aliases.yml').write_text(yaml.safe_dump({'aliases': [{'provider': a.YAHOO_CHART_PROVIDER_ID, 'provider_ticker': 'BRKB.X', 'canonical_id': 'BRK.B'}]}))
+    (no_config / 'config.yml').write_text(yaml.safe_dump({'services': {a.SYMBOL_ALIAS_SERVICE_ID: {
+        'module_path': 'tiferet_stocks.repos.symbol',
+        'class_name': 'SymbolAliasRepository',
+        'params': {'symbol_config': str(no_config / 'aliases.yml')},
+    }}}))
+
+    requested = []
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
+        with pytest.raises(SystemExit):
+            main(argv=['quotes', 'get', 'BRK.B'])
+
+    # The other file sends BRK.B as BRKB.X, never the default BRK-B; the default data/symbols.yml is never created.
+    assert requested == ['cookie', 'crumb', 'quote:BRKB.X']
+    assert 'QUOTES_UNAVAILABLE' in capsys.readouterr().err
+    assert not (no_config / 'data').exists()
+
 # ** test: session_service_beats_top_level_service
 def test_session_service_beats_top_level_service(tmp_path, monkeypatch, capsys) -> None:
     '''
