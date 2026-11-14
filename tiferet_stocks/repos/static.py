@@ -21,7 +21,7 @@ from ..mappers import (
     usable_number,
     Quote,
     QuoteFailure,
-    Quotations,
+    QuoteListAggregate,
     PriceBar,
     PriceHistoryAggregate,
 )
@@ -85,18 +85,18 @@ class StaticPriceRepository(PriceService):
                     self.history.setdefault(row.get('symbol_id'), []).append(row)
 
     # * method: get_quotes
-    def get_quotes(self, symbols: List[str]) -> Quotations:
+    def get_quotes(self, symbols: List[str]) -> QuoteListAggregate:
         '''
         Get the fixed quote for each requested symbol id.
 
         :param symbols: The requested symbol ids (tickers).
         :type symbols: List[str]
-        :return: The quotes by requested id, with a not_found failure for each unknown id.
-        :rtype: Quotations
+        :return: The quotes in request order, with a not_found failure for each unknown id.
+        :rtype: QuoteListAggregate
         '''
 
         # Build a quote or a not_found failure for each distinct id.
-        quotes, failures = {}, []
+        quotes, failures = [], []
         for symbol_id in dict.fromkeys(symbols):
             data = self.prices.get(symbol_id)
             if data is None:
@@ -115,7 +115,7 @@ class StaticPriceRepository(PriceService):
                 previous_close = None
 
             # Build the quote.
-            quotes[symbol_id] = Quote(
+            quotes.append(Quote(
                 symbol_id=symbol_id,
                 price=price,
                 previous_close=previous_close,
@@ -123,10 +123,10 @@ class StaticPriceRepository(PriceService):
                 market_time=data.get('market_time'),
                 currency=data.get('currency', 'USD'),
                 source=self.source,
-            )
+            ))
 
-        # Return the quotations.
-        return Quotations(
+        # Return the quote list.
+        return QuoteListAggregate(
             quotes=quotes,
             failures=failures,
             fetched_at=datetime.now(timezone.utc).isoformat(),

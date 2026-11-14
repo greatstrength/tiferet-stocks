@@ -13,7 +13,7 @@ from tiferet import TiferetError, use_tester
 from tiferet.events import DomainEvent
 
 # ** app
-from tiferet_stocks.domain import Quote, QuoteFailure, Quotations, Symbol, SymbolAlias, SymbolWarning
+from tiferet_stocks.domain import Quote, QuoteFailure, QuoteList, Symbol, SymbolAlias, SymbolWarning
 from tiferet_stocks.events import GetQuotes
 from tiferet_stocks.interfaces import PriceService, SymbolAliasService
 
@@ -69,14 +69,14 @@ def test_get_quotes_partial_failure(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(
-        quotes={'AAPL': Quote(symbol_id='AAPL', price=251.5, source='static')},
+    price_service.get_quotes.return_value = QuoteList(
+        quotes=[Quote(symbol_id='AAPL', price=251.5, source='static')],
         failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
     )
 
     quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['AAPL', 'NOPE'])
 
-    assert list(quotations.quotes) == ['AAPL']
+    assert [quote.symbol_id for quote in quotations.quotes] == ['AAPL']
     assert quotations.failures[0].symbol_id == 'NOPE'
     price_service.get_quotes.assert_called_once_with(['AAPL', 'NOPE'])
 
@@ -89,7 +89,7 @@ def test_get_quotes_all_failed(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(
+    price_service.get_quotes.return_value = QuoteList(
         failures=[
             QuoteFailure(symbol_id='NOPE', reason='not_found'),
             QuoteFailure(symbol_id='GONE', reason='timeout', attempts=2),
@@ -112,7 +112,7 @@ def test_get_quotes_single_string(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
+    price_service.get_quotes.return_value = QuoteList(quotes=[Quote(symbol_id='SPY', price=680.0, source='static')])
 
     DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols='SPY')
 
@@ -127,7 +127,7 @@ def test_get_quotes_depends_only_on_price_service(price_service: mock.Mock) -> N
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=680.0, source='static')})
+    price_service.get_quotes.return_value = QuoteList(quotes=[Quote(symbol_id='SPY', price=680.0, source='static')])
 
     with mock.patch('builtins.open') as patched_open:
         DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=['SPY'])
@@ -146,7 +146,7 @@ def test_get_quotes_empty_symbols(price_service: mock.Mock) -> None:
 
     quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': alias_service()}, symbols=[])
 
-    assert quotations.quotes == {} and quotations.failures == []
+    assert quotations.quotes == [] and quotations.failures == []
     price_service.get_quotes.assert_not_called()
 
 # ** test: get_quotes_brk_b_alias
@@ -158,11 +158,8 @@ def test_get_quotes_brk_b_alias(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(
-        quotes={
-            'BRK-B': Quote(symbol_id='BRK-B', price=589.83, source='yahoo_chart'),
-            'AAPL': Quote(symbol_id='AAPL', price=251.5, source='yahoo_chart'),
-        },
+    price_service.get_quotes.return_value = QuoteList(
+        quotes=[Quote(symbol_id='BRK-B', price=589.83, source='yahoo_chart'), Quote(symbol_id='AAPL', price=251.5, source='yahoo_chart')],
         symbols={'BRK-B': Symbol(id='BRK-B', exchange='NYSE', asset_type='equity')},
         warnings=[SymbolWarning(symbol_id='BRK-B', reason='unmapped_asset_type', detail='TEST')],
         failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
@@ -176,9 +173,9 @@ def test_get_quotes_brk_b_alias(price_service: mock.Mock) -> None:
     )
 
     price_service.get_quotes.assert_called_once_with(['BRK-B', 'AAPL', 'NOPE'])
-    assert list(quotations.quotes) == ['BRK.B', 'AAPL']
-    assert quotations.quotes['BRK.B'].symbol_id == 'BRK.B'
-    assert quotations.quotes['AAPL'].symbol_id == 'AAPL'
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'AAPL']
+    assert quotations.get_quote('BRK.B').symbol_id == 'BRK.B'
+    assert quotations.get_quote('AAPL').symbol_id == 'AAPL'
     assert quotations.symbols['BRK.B'].id == 'BRK.B'
     assert quotations.symbols['BRK.B'].aliases == list(brk_aliases().values())
     assert quotations.warnings[0].symbol_id == 'BRK.B'
@@ -194,7 +191,7 @@ def test_get_quotes_brk_b_alias_all_failed(price_service: mock.Mock) -> None:
     :type price_service: mock.Mock
     '''
 
-    price_service.get_quotes.return_value = Quotations(failures=[QuoteFailure(symbol_id='BRK-B', reason='not_found', detail='HTTP 404')])
+    price_service.get_quotes.return_value = QuoteList(failures=[QuoteFailure(symbol_id='BRK-B', reason='not_found', detail='HTTP 404')])
 
     with pytest.raises(TiferetError) as exc_info:
         DomainEvent.handle(
@@ -220,7 +217,7 @@ def test_get_quotes_empty_symbols_reads_no_aliases(price_service: mock.Mock) -> 
 
     quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': price_service, 'symbol_alias_service': aliases}, symbols=[])
 
-    assert quotations == Quotations()
+    assert quotations == QuoteList()
     aliases.get_aliases.assert_not_called()
     price_service.get_quotes.assert_not_called()
 

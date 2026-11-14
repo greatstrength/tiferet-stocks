@@ -1,8 +1,9 @@
-"""Tiferet Stocks Yahoo Chart Repository Tests"""
+"""Tiferet Stocks Yahoo Repository Tests"""
 
 # *** imports
 
 # ** core
+from email.message import Message
 import io
 import json
 import os
@@ -18,11 +19,16 @@ import pytest
 
 # ** app
 from tiferet_stocks import assets as a
-from tiferet_stocks.mappers import PriceHistoryAggregate
+from tiferet_stocks.mappers import PriceHistoryAggregate, QuoteListAggregate
 from tiferet_stocks.repos.yahoo import (
     YAHOO_ASSET_TYPE_MAP,
     YAHOO_EXCHANGE_MAP,
     YahooChartPriceRepository,
+)
+from tests.repos.yahoo_recorded import (
+    RECORDED_COOKIE,
+    RECORDED_CRUMB,
+    recorded_yahoo,
 )
 
 # *** constants
@@ -64,18 +70,42 @@ def make_response(body: bytes) -> Any:
     return response
 
 # ** function: make_http_error
-def make_http_error(code: int) -> url_error.HTTPError:
+def make_http_error(code: int, body: bytes = b'', headers: dict | None = None) -> url_error.HTTPError:
     '''
-    Build an HTTP error with the given status code.
+    Build an HTTP error with the given status code, body and headers.
 
     :param code: The HTTP status code.
     :type code: int
+    :param body: The response body.
+    :type body: bytes
+    :param headers: The response headers.
+    :type headers: dict | None
     :return: The HTTP error.
     :rtype: url_error.HTTPError
     '''
 
-    # Build and return the error.
-    return url_error.HTTPError('https://example.test', code, 'error', {}, io.BytesIO(b''))
+    # Build and return the error with a real header message.
+    message = Message()
+    for key, value in (headers or {}).items():
+        message[key] = value
+    return url_error.HTTPError('https://example.test', code, 'error', message, io.BytesIO(body))
+
+# ** function: batch_rows
+def batch_rows(**changes: dict) -> List[dict]:
+    '''
+    Read the recorded batch quote rows, with field changes applied per ticker.
+
+    :param changes: Field values to replace, by ticker.
+    :type changes: dict
+    :return: The result rows.
+    :rtype: List[dict]
+    '''
+
+    # Copy the recorded rows and apply each change.
+    rows = json.loads(read_payload('quote_batch'))['quoteResponse']['result']
+    for row in rows:
+        row.update(changes.get(row['symbol'].replace('-', '_'), {}))
+    return rows
 
 # ** function: history_payload
 def history_payload(timestamps: List[Any], closes: List[Any], gmtoffset: Any = -14400) -> bytes:
@@ -165,10 +195,10 @@ def test_init_converts_string_params(repo: YahooChartPriceRepository) -> None:
     assert repo.timeout == 5.0
     assert repo.retries == 1
 
-# ** test: get_quotes_recorded_payload
-def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+# ** test: get_quotes_one_batch_request
+def test_get_quotes_one_batch_request(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
     '''
-    Test that a recorded success payload yields a float-priced quote and the symbol from the same response.
+    Test that a list of symbols is quoted in one batch request, in request order, from the recorded response.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
@@ -176,27 +206,39 @@ def test_get_quotes_recorded_payload(repo: YahooChartPriceRepository, urlopen: m
     :type urlopen: mock.Mock
     '''
 
-    meta = json.loads(read_payload('aapl'))['chart']['result'][0]['meta']
-    urlopen.return_value = make_response(read_payload('aapl'))
+    requested = []
+    urlopen.side_effect = recorded_yahoo(requested)
+    rows = {row['symbol']: row for row in json.loads(read_payload('quote_batch'))['quoteResponse']['result']}
 
-    quotations = repo.get_quotes(['AAPL'])
-    quote = quotations.quotes['AAPL']
+    quotes = repo.get_quotes(['AAPL', 'BRK-B', 'SPY', 'FRSXX'])
 
-    assert isinstance(quote.price, float)
-    assert quote.price == meta['regularMarketPrice']
-    assert quote.previous_close == meta['chartPreviousClose']
-    assert quote.change_pct == round((meta['regularMarketPrice'] - meta['chartPreviousClose']) / meta['chartPreviousClose'] * 100, 4)
-    assert quote.market_time == datetime.fromtimestamp(meta['regularMarketTime'], tz=timezone.utc).isoformat()
-    assert quote.currency == 'USD'
-    assert quote.source == 'yahoo_chart'
-    assert quotations.symbols['AAPL'].exchange == 'NASDAQ'
-    assert quotations.failures == []
-    assert quotations.fetched_at
+    assert requested == ['cookie', 'crumb', 'quote:AAPL,BRK-B,SPY,FRSXX']
+    assert isinstance(quotes, QuoteListAggregate)
+    assert [quote.symbol_id for quote in quotes.quotes] == ['AAPL', 'BRK-B', 'SPY', 'FRSXX']
+    aapl = quotes.get_quote('AAPL')
+    assert isinstance(aapl.price, float)
+    assert aapl.price == rows['AAPL']['regularMarketPrice']
+    assert aapl.previous_close == rows['AAPL']['regularMarketPreviousClose']
+    assert aapl.change_pct == round((aapl.price - aapl.previous_close) / aapl.previous_close * 100, 4)
+    assert aapl.market_time == datetime.fromtimestamp(rows['AAPL']['regularMarketTime'], tz=timezone.utc).isoformat()
+    assert aapl.currency == 'USD'
+    assert aapl.source == 'yahoo_quote'
+    assert quotes.get_quote('FRSXX').previous_close is None
+    assert [(symbol_id, symbol.exchange, symbol.asset_type) for symbol_id, symbol in quotes.symbols.items()] == [
+        ('AAPL', 'NASDAQ', 'equity'),
+        ('BRK-B', 'NYSE', 'equity'),
+        ('SPY', 'NYSE_ARCA', 'etf'),
+        ('FRSXX', None, 'money_market_fund'),
+    ]
+    assert quotes.symbols['AAPL'].name == rows['AAPL']['longName']
+    assert quotes.warnings == []
+    assert quotes.failures == []
+    assert quotes.fetched_at
 
-# ** test: get_quotes_carries_symbol_warnings
-def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+# ** test: get_quotes_omitted_ticker_not_found
+def test_get_quotes_omitted_ticker_not_found(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
     '''
-    Test that an unmapped exchange is a soft warning on the quotations, not a failure.
+    Test that a ticker Yahoo omits is a not_found failure, every id appears once, and nothing raises.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
@@ -204,52 +246,205 @@ def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, url
     :type urlopen: mock.Mock
     '''
 
-    urlopen.return_value = make_response(read_payload('tcehy'))
+    requested = []
+    urlopen.side_effect = recorded_yahoo(requested)
 
-    quotations = repo.get_quotes(['TCEHY'])
+    quotes = repo.get_quotes(['AAPL', 'ZZZZQ', 'SPY', 'AAPL'])
 
-    assert 'TCEHY' in quotations.quotes
-    assert [(w.reason, w.detail) for w in quotations.warnings] == [('unmapped_exchange', 'PNK')]
-    assert quotations.failures == []
+    assert requested[-1] == 'quote:AAPL,ZZZZQ,SPY'
+    assert [quote.symbol_id for quote in quotes.quotes] == ['AAPL', 'SPY']
+    assert [(f.symbol_id, f.reason, f.attempts) for f in quotes.failures] == [('ZZZZQ', 'not_found', 1)]
 
-# ** test: get_quotes_failures
-@pytest.mark.parametrize('side_effect, reason, attempts', [
-    ([make_http_error(404)], 'not_found', 1),
-    ([make_http_error(500), make_http_error(502)], 'http_error', 2),
-    ([socket.timeout('timed out'), socket.timeout('timed out')], 'timeout', 2),
+# ** test: get_quotes_matches_ticker_case
+def test_get_quotes_matches_ticker_case(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a lower-case request matches Yahoo's upper-case row and keeps the requested id on the quote.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    urlopen.side_effect = recorded_yahoo()
+
+    quotes = repo.get_quotes(['aapl'])
+
+    assert quotes.get_quote('aapl') is not None
+    assert quotes.symbols['aapl'].id == 'AAPL'
+
+# ** test: get_quotes_empty_request
+def test_get_quotes_empty_request(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that an empty request returns an empty quote list without any request, including the session.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    quotes = repo.get_quotes([])
+
+    assert quotes.quotes == [] and quotes.failures == []
+    urlopen.assert_not_called()
+
+# ** test: get_quotes_reuses_session
+def test_get_quotes_reuses_session(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that the cookie and crumb are fetched once and reused, so a second crumb is not requested in the same window.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    requested = []
+    urlopen.side_effect = recorded_yahoo(requested)
+
+    repo.get_quotes(['AAPL'])
+    repo.get_quotes(['SPY'])
+
+    assert requested == ['cookie', 'crumb', 'quote:AAPL', 'quote:SPY']
+    assert repo.session.cookie == RECORDED_COOKIE
+    assert repo.session.crumb == RECORDED_CRUMB
+
+# ** test: get_quotes_rejected_session_reopened
+def test_get_quotes_rejected_session_reopened(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a 401 on the quote request drops the session and the retry opens a new one.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    requested = []
+    recorded = recorded_yahoo(requested)
+    rejected = []
+    def urlopen_once_unauthorized(req, timeout=None):
+        if '/v7/finance/quote' in req.full_url and not rejected:
+            rejected.append(req.full_url)
+            requested.append('quote:401')
+            raise make_http_error(401, read_payload('quote_unauthorized'))
+        return recorded(req, timeout)
+    urlopen.side_effect = urlopen_once_unauthorized
+
+    quotes = repo.get_quotes(['AAPL'])
+
+    assert requested == ['cookie', 'crumb', 'quote:401', 'cookie', 'crumb', 'quote:AAPL']
+    assert quotes.get_quote('AAPL') is not None
+    assert quotes.failures == []
+
+# ** test: get_quotes_batch_failures
+@pytest.mark.parametrize('failure, reason, detail, attempts', [
+    (lambda: make_http_error(500), 'http_error', 'HTTP 500', 2),
+    (lambda: socket.timeout('timed out'), 'timeout', 'No response within 5.0 seconds', 2),
+    (lambda: url_error.URLError(socket.timeout('timed out')), 'timeout', 'No response within 5.0 seconds', 2),
+    (lambda: url_error.URLError('connection refused'), 'http_error', 'connection refused', 2),
+    (lambda: make_http_error(401), 'http_error', 'HTTP 401', 2),
+    (lambda: make_http_error(429), 'http_error', 'HTTP 429', 1),
 ])
-def test_get_quotes_failures(repo: YahooChartPriceRepository,
-                             urlopen: mock.Mock,
-                             side_effect: List[Any],
-                             reason: str,
-                             attempts: int) -> None:
+def test_get_quotes_batch_failures(repo: YahooChartPriceRepository,
+                                   urlopen: mock.Mock,
+                                   failure: Any,
+                                   reason: str,
+                                   detail: str,
+                                   attempts: int) -> None:
     '''
-    Test that provider failures become named quote failures with their attempt counts.
+    Test that a batch-level failure after retries is recorded on every requested id; rate limiting is not retried.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
     :param urlopen: The patched urlopen.
     :type urlopen: mock.Mock
-    :param side_effect: The urlopen outcomes in order.
-    :type side_effect: List[Any]
+    :param failure: Builds the error each quote request raises.
+    :type failure: Any
     :param reason: The expected failure reason.
     :type reason: str
+    :param detail: The expected failure detail.
+    :type detail: str
     :param attempts: The expected attempt count.
     :type attempts: int
     '''
 
-    urlopen.side_effect = side_effect
+    requested = []
+    recorded = recorded_yahoo(requested)
+    def urlopen_failing_quote(req, timeout=None):
+        if '/v7/finance/quote' in req.full_url:
+            requested.append('quote')
+            raise failure()
+        return recorded(req, timeout)
+    urlopen.side_effect = urlopen_failing_quote
 
-    quotations = repo.get_quotes(['AAPL'])
+    quotes = repo.get_quotes(['AAPL', 'SPY'])
 
-    assert quotations.quotes == {}
-    assert quotations.failures[0].reason == reason
-    assert quotations.failures[0].attempts == attempts
+    assert quotes.quotes == []
+    assert [(f.symbol_id, f.reason, f.detail, f.attempts) for f in quotes.failures] == [
+        ('AAPL', reason, detail, attempts),
+        ('SPY', reason, detail, attempts),
+    ]
+    assert requested.count('quote') == attempts
 
-# ** test: get_quotes_malformed_json
-def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+# ** test: get_quotes_session_failures
+@pytest.mark.parametrize('cookie_headers, crumb, reason, detail, quote_attempts', [
+    ({}, b'recorded.crumb', 'http_error', 'Session cookie: no cookie was set.', 0),
+    ({'Set-Cookie': 'A3=d=recorded-anonymous-cookie; Path=/'}, make_http_error(429), 'http_error', 'Session crumb: HTTP 429', 0),
+    ({'Set-Cookie': 'A3=d=recorded-anonymous-cookie; Path=/'}, b'{"finance":{"error":"Unauthorized"}}', 'bad_payload', 'Session crumb: unreadable crumb response.', 0),
+])
+def test_get_quotes_session_failures(repo: YahooChartPriceRepository,
+                                     urlopen: mock.Mock,
+                                     cookie_headers: dict,
+                                     crumb: Any,
+                                     reason: str,
+                                     detail: str,
+                                     quote_attempts: int) -> None:
     '''
-    Test that malformed JSON is a bad_payload failure.
+    Test that a session that cannot open becomes a failure on every id and makes no quote request.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param cookie_headers: The cookie host response headers.
+    :type cookie_headers: dict
+    :param crumb: The crumb body, or the error the crumb request raises.
+    :type crumb: Any
+    :param reason: The expected failure reason.
+    :type reason: str
+    :param detail: The expected failure detail.
+    :type detail: str
+    :param quote_attempts: The expected number of quote requests.
+    :type quote_attempts: int
+    '''
+
+    requested = []
+    def urlopen_session(req, timeout=None):
+        url = parse.urlsplit(req.full_url)
+        if url.netloc == 'fc.yahoo.com':
+            requested.append('cookie')
+            raise make_http_error(404, headers=cookie_headers)
+        if url.path == '/v1/test/getcrumb':
+            requested.append('crumb')
+            if isinstance(crumb, Exception):
+                raise crumb
+            return make_response(crumb)
+        requested.append('quote')
+        raise AssertionError('quote requested without a session')
+    urlopen.side_effect = urlopen_session
+
+    quotes = repo.get_quotes(['AAPL'])
+
+    assert [(f.reason, f.detail) for f in quotes.failures] == [(reason, detail)]
+    assert requested.count('quote') == quote_attempts
+    assert not repo.session.is_open()
+
+# ** test: get_quotes_rate_limited_crumb_not_retried
+def test_get_quotes_rate_limited_crumb_not_retried(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a 429 on the crumb is not retried within the same call.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
@@ -257,17 +452,78 @@ def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: moc
     :type urlopen: mock.Mock
     '''
 
-    urlopen.return_value = make_response(b'{not json')
+    requested = []
+    recorded = recorded_yahoo(requested)
+    def urlopen_rate_limited(req, timeout=None):
+        if '/v1/test/getcrumb' in req.full_url:
+            requested.append('crumb:429')
+            raise make_http_error(429)
+        return recorded(req, timeout)
+    urlopen.side_effect = urlopen_rate_limited
 
-    quotations = repo.get_quotes(['AAPL'])
+    quotes = repo.get_quotes(['AAPL'])
 
-    assert quotations.failures[0].reason == 'bad_payload'
+    assert requested == ['cookie', 'crumb:429']
+    assert quotes.failures[0].attempts == 1
+
+# ** test: get_quotes_timeout_then_success
+def test_get_quotes_timeout_then_success(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+    '''
+    Test that a timed-out batch is retried as a whole and keeps the open session.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    '''
+
+    requested = []
+    recorded = recorded_yahoo(requested)
+    timed_out = []
+    def urlopen_timeout_once(req, timeout=None):
+        if '/v7/finance/quote' in req.full_url and not timed_out:
+            timed_out.append(req.full_url)
+            requested.append('quote:timeout')
+            raise socket.timeout('timed out')
+        return recorded(req, timeout)
+    urlopen.side_effect = urlopen_timeout_once
+
+    quotes = repo.get_quotes(['AAPL', 'SPY'])
+
+    assert requested == ['cookie', 'crumb', 'quote:timeout', 'quote:AAPL,SPY']
+    assert [quote.symbol_id for quote in quotes.quotes] == ['AAPL', 'SPY']
+    assert quotes.failures == []
+
+# ** test: get_quotes_malformed_json
+@pytest.mark.parametrize('body', [b'{not json', b'{"quoteResponse": null}', b'{"finance": {}}', b'{"quoteResponse": {"result": 5}}'])
+def test_get_quotes_malformed_json(repo: YahooChartPriceRepository, urlopen: mock.Mock, body: bytes) -> None:
+    '''
+    Test that an unreadable batch body is a bad_payload failure on every requested id.
+
+    :param repo: The repository.
+    :type repo: YahooChartPriceRepository
+    :param urlopen: The patched urlopen.
+    :type urlopen: mock.Mock
+    :param body: The replacement quote body.
+    :type body: bytes
+    '''
+
+    recorded = recorded_yahoo()
+    def urlopen_malformed(req, timeout=None):
+        if '/v7/finance/quote' in req.full_url:
+            return make_response(body)
+        return recorded(req, timeout)
+    urlopen.side_effect = urlopen_malformed
+
+    quotes = repo.get_quotes(['AAPL', 'SPY'])
+
+    assert [(f.symbol_id, f.reason) for f in quotes.failures] == [('AAPL', 'bad_payload'), ('SPY', 'bad_payload')]
 
 # ** test: get_quotes_missing_price
 @pytest.mark.parametrize('price', [None, 'n/a', True, float('nan')])
 def test_get_quotes_missing_price(repo: YahooChartPriceRepository, urlopen: mock.Mock, price: Any) -> None:
     '''
-    Test that a payload without a numeric price is a bad_payload failure.
+    Test that a present row without a numeric price is a bad_payload failure for that id only.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
@@ -277,19 +533,17 @@ def test_get_quotes_missing_price(repo: YahooChartPriceRepository, urlopen: mock
     :type price: Any
     '''
 
-    payload = json.loads(read_payload('aapl'))
-    payload['chart']['result'][0]['meta']['regularMarketPrice'] = price
-    urlopen.return_value = make_response(json.dumps(payload).encode())
+    urlopen.side_effect = recorded_yahoo(rows=batch_rows(AAPL={'regularMarketPrice': price}))
 
-    quotations = repo.get_quotes(['AAPL'])
+    quotes = repo.get_quotes(['AAPL', 'SPY'])
 
-    assert quotations.quotes == {}
-    assert quotations.failures[0].reason == 'bad_payload'
+    assert [quote.symbol_id for quote in quotes.quotes] == ['SPY']
+    assert [(f.symbol_id, f.reason) for f in quotes.failures] == [('AAPL', 'bad_payload')]
 
-# ** test: get_quotes_timeout_then_success
-def test_get_quotes_timeout_then_success(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
+# ** test: get_quotes_carries_symbol_warnings
+def test_get_quotes_carries_symbol_warnings(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
     '''
-    Test that a timeout followed by success yields a quote, proving the single retry.
+    Test that an unmapped exchange is a soft warning on the quote list, not a failure.
 
     :param repo: The repository.
     :type repo: YahooChartPriceRepository
@@ -297,32 +551,13 @@ def test_get_quotes_timeout_then_success(repo: YahooChartPriceRepository, urlope
     :type urlopen: mock.Mock
     '''
 
-    urlopen.side_effect = [socket.timeout('timed out'), make_response(read_payload('spy'))]
+    urlopen.side_effect = recorded_yahoo(rows=batch_rows(AAPL={'exchange': 'PNK'}))
 
-    quotations = repo.get_quotes(['SPY'])
+    quotes = repo.get_quotes(['AAPL'])
 
-    assert quotations.quotes['SPY'].source == 'yahoo_chart'
-    assert quotations.failures == []
-    assert urlopen.call_count == 2
-
-# ** test: get_quotes_every_id_once
-def test_get_quotes_every_id_once(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:
-    '''
-    Test that every requested id appears exactly once, in quotes or in failures.
-
-    :param repo: The repository.
-    :type repo: YahooChartPriceRepository
-    :param urlopen: The patched urlopen.
-    :type urlopen: mock.Mock
-    '''
-
-    urlopen.side_effect = [make_response(read_payload('aapl')), make_http_error(404), make_response(read_payload('spy'))]
-
-    quotations = repo.get_quotes(['AAPL', 'ZZZZQ', 'SPY', 'AAPL'])
-    seen = list(quotations.quotes) + [failure.symbol_id for failure in quotations.failures]
-
-    assert sorted(seen) == ['AAPL', 'SPY', 'ZZZZQ']
-    assert urlopen.call_count == 3
+    assert quotes.get_quote('AAPL') is not None
+    assert [(w.reason, w.detail) for w in quotes.warnings] == [('unmapped_exchange', 'PNK')]
+    assert quotes.failures == []
 
 # ** test: init_clamps_negative_retries
 def test_init_clamps_negative_retries() -> None:
@@ -348,11 +583,9 @@ def test_get_quotes_unusable_previous_close(repo: YahooChartPriceRepository,
     :type previous_close: Any
     '''
 
-    payload = json.loads(read_payload('aapl'))
-    payload['chart']['result'][0]['meta']['chartPreviousClose'] = previous_close
-    urlopen.return_value = make_response(json.dumps(payload).encode())
+    urlopen.side_effect = recorded_yahoo(rows=batch_rows(AAPL={'regularMarketPreviousClose': previous_close}))
 
-    quote = repo.get_quotes(['AAPL']).quotes['AAPL']
+    quote = repo.get_quotes(['AAPL']).get_quote('AAPL')
 
     assert quote.previous_close is None
     assert quote.change_pct is None
@@ -360,11 +593,26 @@ def test_get_quotes_unusable_previous_close(repo: YahooChartPriceRepository,
 # ** test: init_source_default
 def test_init_source_default() -> None:
     '''
-    Test that the default source matches the catalogued Yahoo chart provider id and can be overridden.
+    Test that the default source is the catalogued Yahoo quote provider id, distinct from the alias provider id, and can be overridden.
     '''
 
-    assert YahooChartPriceRepository().source == a.YAHOO_CHART_PROVIDER_ID
+    assert YahooChartPriceRepository().source == a.YAHOO_QUOTE_PROVIDER_ID == 'yahoo_quote'
+    assert a.YAHOO_CHART_PROVIDER_ID == 'yahoo_chart'
     assert YahooChartPriceRepository(source='yahoo_alt').source == 'yahoo_alt'
+
+# ** test: init_session_params
+def test_init_session_params() -> None:
+    '''
+    Test that the batch quote, cookie and crumb URLs default to the verified endpoints and can be configured.
+    '''
+
+    repo = YahooChartPriceRepository()
+    assert repo.batch_quote_url == 'https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols}&crumb={crumb}'
+    assert repo.session.cookie_url == 'https://fc.yahoo.com'
+    assert repo.session.crumb_url == 'https://query1.finance.yahoo.com/v1/test/getcrumb'
+    assert repo.quote_url.startswith('https://query1.finance.yahoo.com/v8/finance/chart/')
+    custom = YahooChartPriceRepository(timeout='3', batch_quote_url='https://q.test/{symbols}/{crumb}', cookie_url='https://c.test', crumb_url='https://k.test')
+    assert (custom.batch_quote_url, custom.session.cookie_url, custom.session.crumb_url, custom.session.timeout) == ('https://q.test/{symbols}/{crumb}', 'https://c.test', 'https://k.test', 3.0)
 
 # ** test: get_quotes_unusable_market_time
 @pytest.mark.parametrize('market_time', [1e20, -1e20, 1e18, 3e11, float('nan'), True, 'soon'])
@@ -382,18 +630,13 @@ def test_get_quotes_unusable_market_time(repo: YahooChartPriceRepository,
     :type market_time: Any
     '''
 
-    payload = json.loads(read_payload('aapl'))
-    payload['chart']['result'][0]['meta']['regularMarketTime'] = market_time
-    urlopen.side_effect = [
-        make_response(json.dumps(payload).encode()),
-        make_response(read_payload('spy')),
-    ]
+    urlopen.side_effect = recorded_yahoo(rows=batch_rows(AAPL={'regularMarketTime': market_time}))
 
-    quotations = repo.get_quotes(['AAPL', 'SPY'])
+    quotes = repo.get_quotes(['AAPL', 'SPY'])
 
-    assert quotations.quotes['AAPL'].market_time is None
-    assert quotations.quotes['SPY'].market_time is not None
-    assert quotations.failures == []
+    assert quotes.get_quote('AAPL').market_time is None
+    assert quotes.get_quote('SPY').market_time is not None
+    assert quotes.failures == []
 
 # ** test: get_quotes_source_override
 def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
@@ -404,11 +647,11 @@ def test_get_quotes_source_override(urlopen: mock.Mock) -> None:
     :type urlopen: mock.Mock
     '''
 
-    urlopen.return_value = make_response(read_payload('aapl'))
+    urlopen.side_effect = recorded_yahoo()
 
-    quotations = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
+    quotes = YahooChartPriceRepository(source='alt').get_quotes(['AAPL'])
 
-    assert quotations.quotes['AAPL'].source == 'alt'
+    assert quotes.get_quote('AAPL').source == 'alt'
 
 # ** test: get_history_recorded_payload
 def test_get_history_recorded_payload(repo: YahooChartPriceRepository, urlopen: mock.Mock) -> None:

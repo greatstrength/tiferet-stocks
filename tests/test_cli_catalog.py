@@ -267,7 +267,7 @@ def test_all_commands_dispatch_existing_features(dispatch_context, argv: list, e
     assert feature_id == expected_id
     assert result is not None
     if feature_id == 'quotes.get':
-        assert result.quotes['AAPL'].source == 'static'
+        assert result.get_quote('AAPL').source == 'static'
     elif feature_id == 'quotes.history':
         assert [bar.date for bar in result] == ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-23']
     elif feature_id.startswith('symbols.'):

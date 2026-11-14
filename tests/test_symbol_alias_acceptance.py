@@ -3,11 +3,8 @@
 # *** imports
 
 # ** core
-import io
 from pathlib import Path
 from unittest import mock
-from urllib import error as url_error
-from urllib import parse
 
 # ** infra
 import pytest
@@ -16,6 +13,7 @@ from tiferet import App, TiferetAPIError
 
 # ** app
 from tiferet_stocks import assets as a
+from tests.repos.yahoo_recorded import recorded_yahoo
 
 # *** constants
 
@@ -24,35 +22,6 @@ ROOT_PATH = Path(__file__).resolve().parents[1]
 
 # ** constant: payloads_path
 PAYLOADS_PATH = ROOT_PATH / 'tests' / 'repos' / 'payloads'
-
-# *** functions
-
-# ** function: recorded_urlopen
-def recorded_urlopen(requested: list):
-    '''
-    Build a urlopen stand-in that serves recorded chart bodies by provider ticker and records each requested ticker.
-
-    :param requested: The list that collects each requested provider ticker.
-    :type requested: list
-    :return: The urlopen stand-in.
-    :rtype: Callable
-    '''
-
-    # Serve BRK-B and AAPL from recordings; any other ticker is an HTTP 404.
-    def urlopen(req, timeout=None):
-        url = parse.urlsplit(req.full_url)
-        assert url.netloc == 'query1.finance.yahoo.com', 'Unexpected endpoint'
-        ticker = parse.unquote(url.path.rsplit('/', 1)[-1])
-        requested.append(ticker)
-        if ticker not in ('BRK-B', 'AAPL'):
-            raise url_error.HTTPError(req.full_url, 404, 'Not Found', {}, io.BytesIO(b''))
-        name = ticker.lower() + ('_history' if 'period1=' in url.query else '')
-        response = mock.MagicMock()
-        response.__enter__.return_value = io.BytesIO((PAYLOADS_PATH / f'{name}.json').read_bytes())
-        return response
-
-    # Return the stand-in.
-    return urlopen
 
 # *** fixtures
 
@@ -70,7 +39,7 @@ def reference(monkeypatch):
     # Run from the checkout and record every provider ticker requested.
     monkeypatch.chdir(ROOT_PATH)
     requested = []
-    with mock.patch('urllib.request.urlopen', side_effect=recorded_urlopen(requested)):
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
         yield App('stocks_client', app_config=str(ROOT_PATH / 'config.yml')), requested
 
 # *** tests
@@ -143,11 +112,12 @@ def test_quotes_get_brk_b(reference) -> None:
 
     quotations = app.run('quotes.get', data={'symbols': ['BRK.B', 'AAPL', 'ZZZZQ']})
 
-    assert requested == ['BRK-B', 'AAPL', 'ZZZZQ']
-    assert list(quotations.quotes) == ['BRK.B', 'AAPL']
-    assert quotations.quotes['BRK.B'].symbol_id == 'BRK.B'
-    assert quotations.quotes['BRK.B'].price == 589.83
-    assert quotations.quotes['AAPL'].symbol_id == 'AAPL'
+    assert requested == ['cookie', 'crumb', 'quote:BRK-B,AAPL,ZZZZQ']
+    assert [quote.symbol_id for quote in quotations.quotes] == ['BRK.B', 'AAPL']
+    assert quotations.get_quote('BRK.B').symbol_id == 'BRK.B'
+    assert quotations.get_quote('BRK.B').price == 592.94
+    assert quotations.get_quote('BRK.B').source == 'yahoo_quote'
+    assert quotations.get_quote('AAPL').symbol_id == 'AAPL'
     assert quotations.symbols['BRK.B'].id == 'BRK.B'
     assert [(f.symbol_id, f.reason) for f in quotations.failures] == [('ZZZZQ', 'not_found')]
 
@@ -203,12 +173,12 @@ def test_missing_seed_passes_through(tmp_path, monkeypatch) -> None:
     (tmp_path / 'config.yml').write_bytes((ROOT_PATH / 'config.yml').read_bytes())
     monkeypatch.chdir(tmp_path)
     requested = []
-    with mock.patch('urllib.request.urlopen', side_effect=recorded_urlopen(requested)):
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
         app = App('stocks_client', app_config=str(tmp_path / 'config.yml'))
         with pytest.raises(TiferetAPIError) as exc_info:
             app.run('quotes.get', data={'symbols': ['BRK.B']})
 
-    assert requested == ['BRK.B']
+    assert requested == ['cookie', 'crumb', 'quote:BRK.B']
     assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
     assert not (tmp_path / 'data').exists()
 
@@ -234,10 +204,10 @@ def test_alias_artifact_wired_independently(tmp_path, monkeypatch) -> None:
 
     # Quote the new canonical id through the unchanged price service.
     requested = []
-    with mock.patch('urllib.request.urlopen', side_effect=recorded_urlopen(requested)):
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo(requested)):
         quotations = App('stocks_client', app_config=str(tmp_path / 'config.yml')).run('quotes.get', data={'symbols': ['APPLE']})
 
-    assert requested == ['AAPL']
-    assert quotations.quotes['APPLE'].symbol_id == 'APPLE'
+    assert requested == ['cookie', 'crumb', 'quote:AAPL']
+    assert quotations.get_quote('APPLE').symbol_id == 'APPLE'
     for service_id in (a.SYMBOL_LOOKUP_SERVICE_ID, a.PRICE_SERVICE_ID):
         assert config['services'][service_id] == reference['services'][service_id]

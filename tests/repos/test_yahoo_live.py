@@ -1,4 +1,4 @@
-"""Tiferet Stocks Yahoo Chart Repository Live Tests"""
+"""Tiferet Stocks Yahoo Repository Live Tests"""
 
 # *** imports
 
@@ -41,14 +41,22 @@ def test_live_lookup() -> None:
 @pytest.mark.skipif(os.getenv(LIVE_FLAG) != '1', reason=f'set {LIVE_FLAG}=1 to run live provider checks')
 def test_live_quotes() -> None:
     '''
-    Opt-in live check that the Yahoo chart format still yields float-priced quotes.
+    Opt-in live check that the anonymous session and batch quote format still yield float-priced quotes in one request,
+    with an omitted ticker reported as not_found, and that a second call reuses the session.
     '''
 
-    quotations = YahooChartPriceRepository().get_quotes(['AAPL', 'SPY'])
+    repo = YahooChartPriceRepository()
+    quotes = repo.get_quotes(['AAPL', 'SPY', 'ZZZZNOTREAL'])
+    crumb = repo.session.crumb
+    again = repo.get_quotes(['QQQ'])
 
-    assert isinstance(quotations.quotes['AAPL'].price, float)
-    assert quotations.quotes['SPY'].source == 'yahoo_chart'
-    assert quotations.failures == []
+    assert [quote.symbol_id for quote in quotes.quotes] == ['AAPL', 'SPY']
+    assert isinstance(quotes.get_quote('AAPL').price, float)
+    assert quotes.get_quote('SPY').source == 'yahoo_quote'
+    assert quotes.symbols['SPY'].exchange == 'NYSE_ARCA'
+    assert [(f.symbol_id, f.reason) for f in quotes.failures] == [('ZZZZNOTREAL', 'not_found')]
+    assert again.get_quote('QQQ') is not None
+    assert repo.session.crumb == crumb
 
 # ** test: live_history
 @pytest.mark.skipif(os.getenv(LIVE_FLAG) != '1', reason=f'set {LIVE_FLAG}=1 to run live provider checks')
@@ -75,5 +83,5 @@ def test_live_brk_b_alias() -> None:
     quotations = DomainEvent.handle(GetQuotes, dependencies={'price_service': YahooChartPriceRepository(), 'symbol_alias_service': aliases}, symbols=['BRK.B'])
 
     assert lookup.symbols['BRK.B'].exchange == 'NYSE'
-    assert isinstance(quotations.quotes['BRK.B'].price, float)
-    assert quotations.quotes['BRK.B'].symbol_id == 'BRK.B'
+    assert isinstance(quotations.get_quote('BRK.B').price, float)
+    assert quotations.get_quote('BRK.B').symbol_id == 'BRK.B'

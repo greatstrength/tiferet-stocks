@@ -25,7 +25,7 @@ from ..domain import (
     usable_number,
     QuoteFailure,
     Quote,
-    Quotations,
+    QuoteList,
     PriceBar,
     PriceHistory,
     SymbolAlias,
@@ -34,6 +34,9 @@ from ..domain import (
 )
 from .history import (
     PriceHistoryAggregate,
+)
+from .quote import (
+    QuoteListAggregate,
 )
 from .symbol import (
     SymbolAggregate,

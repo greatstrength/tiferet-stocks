@@ -10,25 +10,25 @@ from tiferet.contexts.cli import CliRequestContext, build_cli_record
 from tiferet.domain.cli import CliRecordList
 
 # ** app
-from tiferet_stocks.domain import Quotations, SymbolLookup
+from tiferet_stocks.domain import QuoteList, SymbolLookup
 
 # *** functions
 
 # ** function: build_symbol_rows
-def build_symbol_rows(result: Quotations | SymbolLookup) -> List[Dict[str, Any]]:
+def build_symbol_rows(result: QuoteList | SymbolLookup) -> List[Dict[str, Any]]:
     '''
     Make one flat row per symbol while retaining every warning and failure.
 
     :param result: The unchanged library answer.
-    :type result: Quotations | SymbolLookup
+    :type result: QuoteList | SymbolLookup
     :return: Flat rows suitable for core's native table formatter.
     :rtype: List[Dict[str, Any]]
     '''
 
     # Preserve encounter order across all answer components, including failure-only ids.
-    quotes = result.quotes if isinstance(result, Quotations) else {}
+    quotes = result.quotes if isinstance(result, QuoteList) else []
     ids = list(dict.fromkeys([
-        *quotes,
+        *(quote.symbol_id for quote in quotes),
         *result.symbols,
         *(failure.symbol_id for failure in result.failures),
         *(warning.symbol_id for warning in result.warnings),
@@ -37,7 +37,7 @@ def build_symbol_rows(result: Quotations | SymbolLookup) -> List[Dict[str, Any]]
 
     # Scalar, prefixed columns retain complete records without nested repr cells.
     for symbol_id in ids:
-        quote = quotes.get(symbol_id)
+        quote = result.get_quote(symbol_id) if isinstance(result, QuoteList) else None
         symbol = result.symbols.get(symbol_id)
         failures = [failure for failure in result.failures if failure.symbol_id == symbol_id]
         warnings = [warning for warning in result.warnings if warning.symbol_id == symbol_id]
@@ -53,7 +53,7 @@ def build_symbol_rows(result: Quotations | SymbolLookup) -> List[Dict[str, Any]]
             row.update({'resolved_symbol_id' if key == 'id' else f'symbol_{key}': value for key, value in symbol.model_dump(exclude_none=True, exclude={'aliases'}).items()})
             for alias in symbol.aliases:
                 row[f'symbol_alias_{alias.provider}'] = alias.provider_ticker
-        if isinstance(result, Quotations) and result.fetched_at is not None:
+        if isinstance(result, QuoteList) and result.fetched_at is not None:
             row['fetched_at'] = result.fetched_at
 
         # Number repeated records rather than silently keeping only the first message.
@@ -86,7 +86,7 @@ class StocksCliRequestContext(CliRequestContext):
         '''
 
         # Use the existing record/table models for stock-specific flat rows.
-        if isinstance(self.result, (Quotations, SymbolLookup)):
+        if isinstance(self.result, (QuoteList, SymbolLookup)):
             return CliRecordList(records=[build_cli_record(row) for row in build_symbol_rows(self.result)])
 
         # History, exchanges and watchlists retain the framework's native behavior.

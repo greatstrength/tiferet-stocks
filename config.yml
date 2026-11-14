@@ -32,6 +32,10 @@ services:
     params:
       timeout: '10'
       retries: '1'
+      # Quotes: one request to the batch quote endpoint under an anonymous cookie and crumb session. History stays on the chart endpoint.
+      batch_quote_url: https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols}&crumb={crumb}
+      cookie_url: https://fc.yahoo.com
+      crumb_url: https://query1.finance.yahoo.com/v1/test/getcrumb
   get_symbol_event:
     module_path: tiferet_stocks.events.symbol
     class_name: GetSymbol

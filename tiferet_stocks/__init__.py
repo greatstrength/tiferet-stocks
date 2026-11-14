@@ -15,7 +15,7 @@ try:
         SymbolLookup,
         QuoteFailure,
         Quote,
-        Quotations,
+        QuoteList,
         Watchlist,
         PriceBar,
         PriceHistory,

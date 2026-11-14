@@ -100,7 +100,7 @@ def run_probe(directory: Path, extension: str, mutant: str = 'none') -> dict:
         opener.return_value = response
         assert app.run('symbols.get', data={'id': 'SPY'}).symbols['SPY'].id == 'SPY'
         assert app.run('symbols.resolve', data={'ids': ['SPY']}).symbols['SPY'].id == 'SPY'
-    assert app.run('quotes.get', data={'symbols': ['AAPL']}).quotes['AAPL'].source == 'static'
+    assert app.run('quotes.get', data={'symbols': ['AAPL']}).get_quote('AAPL').source == 'static'
     assert 'NASDAQ' in app.run('exchanges.list')
 
     first = '2026-11-06T14:00:00-07:00'

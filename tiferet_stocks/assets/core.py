@@ -40,6 +40,9 @@ GET_HISTORY_EVENT_ID = 'get_history_event'
 # ** constant: yahoo_chart_provider_id
 YAHOO_CHART_PROVIDER_ID = 'yahoo_chart'
 
+# ** constant: yahoo_quote_provider_id
+YAHOO_QUOTE_PROVIDER_ID = 'yahoo_quote'
+
 # ** constant: static_provider_id
 STATIC_PROVIDER_ID = 'static'
 

@@ -45,6 +45,6 @@ from .symbol import (
     rekey_symbol_id,
     rekey_symbol_ids,
 )
-from .quotations import Quotations
+from .quote_list import QuoteList
 from .watchlist import Watchlist
 from .history import PriceHistory

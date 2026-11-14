@@ -15,6 +15,7 @@ from tiferet import App, TiferetAPIError
 # ** app
 from tiferet_stocks import assets as a
 from tiferet_stocks.domain import EXCHANGES
+from tests.repos.yahoo_recorded import recorded_yahoo
 
 # *** constants
 
@@ -39,21 +40,11 @@ STATIC_PRICES_PATH = os.path.join(os.path.dirname(__file__), 'repos', 'fixtures'
 @pytest.fixture
 def app():
     '''
-    The reference stocks client session with urlopen patched to a recorded SPY payload.
+    The reference stocks client session with urlopen patched to recorded Yahoo session, batch quote and chart responses.
     '''
 
-    # Read the recorded payload once.
-    with open(PAYLOAD_PATH, 'rb') as file:
-        body = file.read()
-
-    # Return a fresh context-managed response per call.
-    def respond(*args, **kwargs):
-        response = mock.MagicMock()
-        response.__enter__.return_value = io.BytesIO(body)
-        return response
-
     # Yield the app session with the network patched out.
-    with mock.patch('urllib.request.urlopen', side_effect=respond):
+    with mock.patch('urllib.request.urlopen', side_effect=recorded_yahoo()):
         yield App('stocks_client', app_config=CONFIG_PATH)
 
 # *** tests
@@ -120,8 +111,8 @@ def test_quotes_get(app) -> None:
 
     quotations = app.run('quotes.get', data={'symbols': ['SPY']})
 
-    assert isinstance(quotations.quotes['SPY'].price, float)
-    assert quotations.quotes['SPY'].source == 'yahoo_chart'
+    assert isinstance(quotations.get_quote('SPY').price, float)
+    assert quotations.get_quote('SPY').source == 'yahoo_quote'
     assert quotations.symbols['SPY'].exchange == 'NYSE_ARCA'
 
 # ** test: quotes_get_static_provider_swap
@@ -154,7 +145,7 @@ def test_quotes_get_static_provider_swap(tmp_path, monkeypatch) -> None:
         with pytest.raises(TiferetAPIError) as exc_info:
             app.run('quotes.get', data={'symbols': ['NOPE']})
 
-    assert quotations.quotes['AAPL'].source == 'static'
+    assert quotations.get_quote('AAPL').source == 'static'
     assert [failure.symbol_id for failure in quotations.failures] == ['NOPE']
     assert exc_info.value.error_code == 'QUOTES_UNAVAILABLE'
     assert exc_info.value.message == 'No quotes are available for the requested symbols: NOPE.'

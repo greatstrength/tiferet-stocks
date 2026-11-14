@@ -1,4 +1,4 @@
-"""Tiferet Stocks Yahoo Chart Repository"""
+"""Tiferet Stocks Yahoo Repository"""
 
 # *** imports
 
@@ -34,7 +34,7 @@ from ..mappers import (
     usable_number,
     Quote,
     QuoteFailure,
-    Quotations,
+    QuoteListAggregate,
     PriceBar,
     PriceHistoryAggregate,
     SymbolWarning,
@@ -78,13 +78,181 @@ DEFAULT_TIMEOUT = '10'
 # ** constant: default_retries
 DEFAULT_RETRIES = '1'
 
+# ** constant: default_batch_quote_url
+DEFAULT_BATCH_QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols}&crumb={crumb}'
+
+# ** constant: default_cookie_url
+DEFAULT_COOKIE_URL = 'https://fc.yahoo.com'
+
+# ** constant: default_crumb_url
+DEFAULT_CRUMB_URL = 'https://query1.finance.yahoo.com/v1/test/getcrumb'
+
 # ** constant: default_source
-DEFAULT_SOURCE = 'yahoo_chart'
+DEFAULT_SOURCE = 'yahoo_quote'
+
+# ** constant: rate_limited_status
+RATE_LIMITED_STATUS = 429
+
+# ** constant: session_rejected_statuses
+SESSION_REJECTED_STATUSES = (401, 403)
 
 # ** constant: user_agent
 USER_AGENT = 'Mozilla/5.0 (compatible; tiferet-stocks)'
 
+# *** functions
+
+# ** function: describe_request_error
+def describe_request_error(error: Exception, timeout: float) -> Tuple[str, str, int | None]:
+    '''
+    Name a failed Yahoo request as a quote failure reason, detail and HTTP status.
+
+    :param error: The exception raised by the request.
+    :type error: Exception
+    :param timeout: The request timeout in seconds, for the detail text.
+    :type timeout: float
+    :return: The failure reason, its detail and the HTTP status when there is one.
+    :rtype: Tuple[str, str, int | None]
+    '''
+
+    # An HTTP status is an http_error carrying its code.
+    if isinstance(error, url_error.HTTPError):
+        return HTTP_ERROR, f'HTTP {error.code}', error.code
+
+    # A timeout, raised directly or wrapped in a URLError, is a timeout.
+    reason = error.reason if isinstance(error, url_error.URLError) else error
+    if isinstance(reason, (socket.timeout, TimeoutError)):
+        return TIMEOUT, f'No response within {timeout} seconds', None
+
+    # Anything else is a request error.
+    if isinstance(error, url_error.URLError):
+        return HTTP_ERROR, str(error.reason), None
+    return HTTP_ERROR, str(error) or type(error).__name__, None
+
 # *** classes
+
+# ** class: yahoo_anonymous_session
+class YahooAnonymousSession(object):
+    '''
+    The repository's own anonymous Yahoo session: an A3 cookie and a crumb, fetched once and reused.
+    It is not a user account, it never raises, and nothing outside the Yahoo repository sees it.
+    '''
+
+    # * attribute: cookie_url
+    cookie_url: str
+
+    # * attribute: crumb_url
+    crumb_url: str
+
+    # * attribute: timeout
+    timeout: float
+
+    # * attribute: cookie
+    cookie: str | None
+
+    # * attribute: crumb
+    crumb: str | None
+
+    # * init
+    def __init__(self, cookie_url: str = DEFAULT_COOKIE_URL, crumb_url: str = DEFAULT_CRUMB_URL, timeout: float = 10.0) -> None:
+        '''
+        Initialize an empty session.
+
+        :param cookie_url: The URL whose response sets the anonymous cookie.
+        :type cookie_url: str
+        :param crumb_url: The URL that returns a crumb for that cookie.
+        :type crumb_url: str
+        :param timeout: The request timeout in seconds.
+        :type timeout: float
+        '''
+
+        # Start with no cookie or crumb; the first quote request opens the session.
+        self.cookie_url = cookie_url
+        self.crumb_url = crumb_url
+        self.timeout = float(timeout)
+        self.cookie = None
+        self.crumb = None
+
+    # * method: is_open
+    def is_open(self) -> bool:
+        '''
+        Check whether the session holds a cookie and a crumb.
+
+        :return: True when both are held.
+        :rtype: bool
+        '''
+
+        # Both parts are needed for a quote request.
+        return bool(self.cookie and self.crumb)
+
+    # * method: reset
+    def reset(self) -> None:
+        '''
+        Forget the cookie and crumb, so the next request opens a new session.
+
+        :return: None.
+        :rtype: None
+        '''
+
+        # Drop both parts together.
+        self.cookie = None
+        self.crumb = None
+
+    # * method: open
+    def open(self) -> Tuple[str, str, int | None] | None:
+        '''
+        Open the session if it is not already open; an open session is reused without any request.
+
+        :return: None when the session is open, otherwise the failure reason, detail and HTTP status.
+        :rtype: Tuple[str, str, int | None] | None
+        '''
+
+        # Reuse a held cookie and crumb; a second crumb fetch in the same window can be rate limited.
+        if self.is_open():
+            return None
+
+        # The cookie host answers with Set-Cookie, often on an error status.
+        try:
+            with request.urlopen(request.Request(self.cookie_url, headers={'User-Agent': USER_AGENT}), timeout=self.timeout) as response:
+                headers = response.headers
+        except url_error.HTTPError as error:
+            headers = error.headers
+        except (http_client.HTTPException, OSError) as error:
+            reason, detail, status = describe_request_error(error, self.timeout)
+            return reason, f'Session cookie: {detail}', status
+        cookies = [value.split(';', 1)[0].strip() for value in (headers.get_all('Set-Cookie') if headers else None) or []]
+        cookie = '; '.join(value for value in cookies if value)
+        if not cookie:
+            return HTTP_ERROR, 'Session cookie: no cookie was set.', None
+
+        # Ask for a crumb under that cookie.
+        try:
+            with request.urlopen(self.build_request(self.crumb_url, cookie), timeout=self.timeout) as response:
+                crumb = response.read().decode('utf-8', 'replace').strip()
+        except (http_client.HTTPException, OSError) as error:
+            reason, detail, status = describe_request_error(error, self.timeout)
+            return reason, f'Session crumb: {detail}', status
+        if not crumb or any(character.isspace() or character in '<{' for character in crumb):
+            return BAD_PAYLOAD, 'Session crumb: unreadable crumb response.', None
+
+        # Hold both for reuse.
+        self.cookie, self.crumb = cookie, crumb
+        return None
+
+    # * method: build_request
+    def build_request(self, url: str, cookie: str = None) -> request.Request:
+        '''
+        Build a request that carries the session cookie.
+
+        :param url: The full request URL.
+        :type url: str
+        :param cookie: The cookie header value; defaults to the held cookie.
+        :type cookie: str
+        :return: The request.
+        :rtype: request.Request
+        '''
+
+        # Send the shared User-Agent and the anonymous cookie.
+        return request.Request(url, headers={'User-Agent': USER_AGENT, 'Cookie': cookie or self.cookie or ''})
 
 # ** class: yahoo_chart_client
 class YahooChartClient(object):
@@ -259,7 +427,8 @@ class YahooChartClient(object):
 # ** repo: yahoo_chart_price_repository
 class YahooChartPriceRepository(YahooChartClient, PriceService):
     '''
-    Price provider backed by the Yahoo chart endpoint. It is alias-free: it takes whatever id it is given.
+    Price provider backed by Yahoo: quotes from the batch quote endpoint in one request, history from the chart endpoint one symbol at a time.
+    It is alias-free: it takes whatever id it is given.
     '''
 
     # * attribute: history_url
@@ -268,15 +437,24 @@ class YahooChartPriceRepository(YahooChartClient, PriceService):
     # * attribute: source
     source: str
 
+    # * attribute: batch_quote_url
+    batch_quote_url: str
+
+    # * attribute: session
+    session: YahooAnonymousSession
+
     # * init
     def __init__(self,
                  quote_url: str = DEFAULT_QUOTE_URL,
                  timeout: str = DEFAULT_TIMEOUT,
                  retries: str = DEFAULT_RETRIES,
                  source: str = DEFAULT_SOURCE,
-                 history_url: str = DEFAULT_HISTORY_URL) -> None:
+                 history_url: str = DEFAULT_HISTORY_URL,
+                 batch_quote_url: str = DEFAULT_BATCH_QUOTE_URL,
+                 cookie_url: str = DEFAULT_COOKIE_URL,
+                 crumb_url: str = DEFAULT_CRUMB_URL) -> None:
         '''
-        Initialize the Yahoo chart price repository.
+        Initialize the Yahoo price repository.
 
         :param quote_url: The chart endpoint URL template, with a {symbol} placeholder.
         :type quote_url: str
@@ -288,44 +466,54 @@ class YahooChartPriceRepository(YahooChartClient, PriceService):
         :type source: str
         :param history_url: The daily chart endpoint URL template, with {symbol}, {period1} and {period2} placeholders.
         :type history_url: str
+        :param batch_quote_url: The batch quote endpoint URL template, with {symbols} and {crumb} placeholders.
+        :type batch_quote_url: str
+        :param cookie_url: The URL whose response sets the anonymous session cookie.
+        :type cookie_url: str
+        :param crumb_url: The URL that returns the session crumb.
+        :type crumb_url: str
         '''
 
         # Set up the shared chart client, then the price-only parameters.
         YahooChartClient.__init__(self, quote_url=quote_url, timeout=timeout, retries=retries)
         self.source = source
         self.history_url = history_url
+        self.batch_quote_url = batch_quote_url
+
+        # The anonymous session lives with the repository and is reused across calls.
+        self.session = YahooAnonymousSession(cookie_url=cookie_url, crumb_url=crumb_url, timeout=self.timeout)
 
     # * method: translate_quote
     def translate_quote(self,
                         symbol_id: str,
-                        meta: Dict[str, Any],
+                        row: Dict[str, Any],
                         attempts: int) -> Tuple[Quote | None, QuoteFailure | None]:
         '''
-        Translate chart metadata into a quote.
+        Translate one batch quote row into a quote.
 
         :param symbol_id: The requested symbol id (ticker).
         :type symbol_id: str
-        :param meta: The chart result metadata.
-        :type meta: Dict[str, Any]
-        :param attempts: The number of attempts made for the symbol.
+        :param row: The batch quote result row for the symbol.
+        :type row: Dict[str, Any]
+        :param attempts: The number of attempts made for the batch.
         :type attempts: int
         :return: The quote and no failure, or no quote and the failure.
         :rtype: Tuple[Quote | None, QuoteFailure | None]
         '''
 
         # A quote needs a numeric price.
-        price = meta.get('regularMarketPrice')
+        price = row.get('regularMarketPrice')
         if not usable_number(price):
-            return None, QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Chart metadata has no usable regularMarketPrice.', attempts=attempts)
+            return None, QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail='Quote row has no usable regularMarketPrice.', attempts=attempts)
 
         # Derive the change from a usable previous close.
-        previous_close = meta.get('chartPreviousClose')
+        previous_close = row.get('regularMarketPreviousClose')
         if not usable_number(previous_close) or previous_close <= 0:
             previous_close = None
         change_pct = derive_change_pct(price, previous_close)
 
         # Convert the market time from epoch seconds to ISO 8601 UTC; an unusable or out-of-range value leaves it empty.
-        market_time = meta.get('regularMarketTime')
+        market_time = row.get('regularMarketTime')
         try:
             market_time = datetime.fromtimestamp(market_time, tz=timezone.utc).isoformat() if usable_number(market_time) else None
         except (OverflowError, OSError, ValueError):
@@ -338,42 +526,119 @@ class YahooChartPriceRepository(YahooChartClient, PriceService):
             previous_close=previous_close,
             change_pct=change_pct,
             market_time=market_time,
-            currency=meta.get('currency'),
+            currency=row.get('currency'),
             source=self.source,
         ), None
 
-    # * method: get_quotes
-    def get_quotes(self, symbols: List[str]) -> Quotations:
+    # * method: fetch_quotes
+    def fetch_quotes(self, symbol_ids: List[str]) -> Tuple[bytes | None, Tuple[str, str] | None, int]:
         '''
-        Get the latest quote for each requested symbol id from the Yahoo chart endpoint.
+        Fetch the batch quote body for every requested id in one request, retrying the whole batch.
+
+        :param symbol_ids: The distinct requested symbol ids, in request order.
+        :type symbol_ids: List[str]
+        :return: The response body or the batch failure reason and detail, with the number of attempts made.
+        :rtype: Tuple[bytes | None, Tuple[str, str] | None, int]
+        '''
+
+        # Try once plus the configured retries; every attempt covers the whole batch.
+        failure, attempts = (HTTP_ERROR, None), 0
+        for _ in range(self.retries + 1):
+            attempts += 1
+
+            # Open, or reuse, the anonymous session; a rate-limited session request is not retried.
+            opened = self.session.open()
+            if opened:
+                reason, detail, status = opened
+                failure = (reason, detail)
+                if status == RATE_LIMITED_STATUS:
+                    break
+                continue
+
+            # One request for the whole list.
+            url = self.batch_quote_url.format(
+                symbols=parse.quote(','.join(symbol_ids), safe=','),
+                crumb=parse.quote(self.session.crumb, safe=''),
+            )
+            try:
+                with request.urlopen(self.session.build_request(url), timeout=self.timeout) as response:
+                    return response.read(), None, attempts
+            except (http_client.HTTPException, OSError) as error:
+                reason, detail, status = describe_request_error(error, self.timeout)
+                failure = (reason, detail)
+
+            # A rejected session is dropped and reopened on the next attempt; rate limiting is not retried.
+            if status in SESSION_REJECTED_STATUSES:
+                self.session.reset()
+            if status == RATE_LIMITED_STATUS:
+                break
+
+        # Every attempt failed; return the last failure.
+        return None, failure, attempts
+
+    # * method: get_quotes
+    def get_quotes(self, symbols: List[str]) -> QuoteListAggregate:
+        '''
+        Get the latest quote for each requested symbol id from the Yahoo batch quote endpoint, in one request.
 
         :param symbols: The requested symbol ids (tickers).
         :type symbols: List[str]
-        :return: The quotes by requested id, with symbols, warnings and failures.
-        :rtype: Quotations
+        :return: The quotes in request order, with symbols, warnings and a failure for every id that produced no quote.
+        :rtype: QuoteListAggregate
         '''
 
-        # Record when the request started.
+        # Record when the request started; an empty request makes no network call.
         fetched_at = datetime.now(timezone.utc).isoformat()
+        symbol_ids = list(dict.fromkeys(symbols))
+        if not symbol_ids:
+            return QuoteListAggregate(fetched_at=fetched_at)
 
-        # Fetch each distinct id once and translate its quote and symbol.
-        quotes, symbol_map, warnings, failures = {}, {}, [], []
-        for symbol_id in dict.fromkeys(symbols):
-            result, failure, attempts = self.fetch_chart(symbol_id)
-            if failure:
-                failures.append(failure)
+        # A batch-level failure is recorded on every requested id.
+        body, failure, attempts = self.fetch_quotes(symbol_ids)
+        if failure:
+            reason, detail = failure
+            return QuoteListAggregate(
+                failures=[QuoteFailure(symbol_id=symbol_id, reason=reason, detail=detail, attempts=attempts) for symbol_id in symbol_ids],
+                fetched_at=fetched_at,
+            )
+
+        # An unreadable body is a bad_payload failure on every requested id.
+        try:
+            results = json.loads(body)['quoteResponse']['result']
+            rows = {str(row['symbol']).upper(): row for row in results if isinstance(row, dict) and row.get('symbol')}
+        except (ValueError, KeyError, TypeError) as error:
+            return QuoteListAggregate(
+                failures=[QuoteFailure(symbol_id=symbol_id, reason=BAD_PAYLOAD, detail=f'Unreadable quote response: {error}', attempts=attempts) for symbol_id in symbol_ids],
+                fetched_at=fetched_at,
+            )
+
+        # Translate each requested id in order; an id Yahoo omitted is not_found, never dropped.
+        quotes, symbol_map, warnings, failures = [], {}, [], []
+        for symbol_id in symbol_ids:
+            row = rows.get(symbol_id.upper())
+            if row is None:
+                failures.append(QuoteFailure(symbol_id=symbol_id, reason=NOT_FOUND, detail='Not in the quote response.', attempts=attempts))
                 continue
-            quote, failure = self.translate_quote(symbol_id, result['meta'], attempts)
-            if failure:
-                failures.append(failure)
+            quote, quote_failure = self.translate_quote(symbol_id, row, attempts)
+            if quote_failure:
+                failures.append(quote_failure)
                 continue
-            symbol, symbol_warnings = self.translate_symbol(symbol_id, result['meta'])
-            quotes[symbol_id] = quote
+
+            # The batch row carries the same symbol details as chart metadata, under its own field names.
+            symbol, symbol_warnings = self.translate_symbol(symbol_id, {
+                'symbol': row.get('symbol'),
+                'instrumentType': row.get('quoteType'),
+                'exchangeName': row.get('exchange'),
+                'longName': row.get('longName'),
+                'shortName': row.get('shortName'),
+                'currency': row.get('currency'),
+            })
+            quotes.append(quote)
             symbol_map[symbol_id] = symbol
             warnings.extend(symbol_warnings)
 
-        # Return the quotations.
-        return Quotations(
+        # Return the quote list.
+        return QuoteListAggregate(
             quotes=quotes,
             symbols=symbol_map,
             warnings=warnings,

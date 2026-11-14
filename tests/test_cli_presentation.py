@@ -9,7 +9,7 @@ from tiferet.domain.cli import CliOutputRecord, CliRecordList
 
 # ** app
 from tiferet_stocks.contexts.cli import StocksCliRequestContext, build_symbol_rows
-from tiferet_stocks.domain import PriceBar, Quote, QuoteFailure, Quotations, Symbol, SymbolAlias, SymbolLookup, SymbolWarning, Watchlist
+from tiferet_stocks.domain import PriceBar, Quote, QuoteFailure, QuoteList, Symbol, SymbolAlias, SymbolLookup, SymbolWarning, Watchlist
 
 # *** tests
 
@@ -22,8 +22,8 @@ def test_quote_rows_retain_complete_records() -> None:
     :rtype: None
     '''
 
-    result = Quotations(
-        quotes={'SPY': Quote(symbol_id='DIFFERENT', price=600.5, previous_close=600.0, change_pct=0.0833, market_time='2026-11-06T14:00:00-07:00', currency='USD', source='static')},
+    result = QuoteList(
+        quotes=[Quote(symbol_id='SPY', price=600.5, previous_close=600.0, change_pct=0.0833, market_time='2026-11-06T14:00:00-07:00', currency='USD', source='static')],
         symbols={'SPY': Symbol(id='DIFFERENT', name='Example', exchange='NYSE_ARCA', asset_type='etf', currency='CAD')},
         failures=[QuoteFailure(symbol_id='SPY', reason='timeout', detail='first', attempts=2), QuoteFailure(symbol_id='SPY', reason='http_error', detail='second', attempts=1), QuoteFailure(symbol_id='BAD', reason='not_found', detail='absent')],
         warnings=[SymbolWarning(symbol_id='SPY', reason='unmapped_exchange', detail='PNK'), SymbolWarning(symbol_id='SPY', reason='unmapped_asset_type', detail='OTHER')],
@@ -35,11 +35,12 @@ def test_quote_rows_retain_complete_records() -> None:
     assert [row['symbol_id'] for row in rows] == ['SPY', 'BAD']
     row = rows[0]
     assert row['status'] == 'partial'
-    assert row['quote_symbol_id'] == 'DIFFERENT'
+    assert row['quote_symbol_id'] == 'SPY'
+    assert row['resolved_symbol_id'] == 'DIFFERENT'
     assert row['symbol_id'] == 'SPY'
     assert row['currency'] == 'USD'
     assert row['symbol_currency'] == 'CAD'
-    for key, value in result.quotes['SPY'].model_dump(exclude_none=True).items():
+    for key, value in result.get_quote('SPY').model_dump(exclude_none=True).items():
         assert row['quote_symbol_id' if key == 'symbol_id' else key] == value
     assert 'symbol_aliases' not in row
     for key, value in result.symbols['SPY'].model_dump(exclude_none=True, exclude={'aliases'}).items():
@@ -107,9 +108,9 @@ def test_lookup_rows_show_alias_as_scalar_column() -> None:
 
 # ** test: native_symbol_tables_preserve_raw_result
 @pytest.mark.parametrize('result', [
-    Quotations(quotes={'SPY': Quote(symbol_id='SPY', price=600.0, source='static')}, failures=[QuoteFailure(symbol_id='BAD', reason='not_found')]),
+    QuoteList(quotes=[Quote(symbol_id='SPY', price=600.0, source='static')], failures=[QuoteFailure(symbol_id='BAD', reason='not_found')]),
     SymbolLookup(symbols={'SPY': Symbol(id='SPY')}, warnings=[SymbolWarning(symbol_id='SPY', reason='unmapped_exchange', detail='PNK')]),
-    Quotations(),
+    QuoteList(),
     SymbolLookup(),
 ])
 def test_native_symbol_tables_preserve_raw_result(result) -> None:
@@ -117,7 +118,7 @@ def test_native_symbol_tables_preserve_raw_result(result) -> None:
     Return native table models without modifying or replacing library answers.
 
     :param result: A quote or lookup answer.
-    :type result: Quotations | SymbolLookup
+    :type result: QuoteList | SymbolLookup
 
     :return: None; assertions enforce the contract.
     :rtype: None

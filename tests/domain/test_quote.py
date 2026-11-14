@@ -15,7 +15,7 @@ from tiferet_stocks.domain import (
     usable_number,
     Quote,
     QuoteFailure,
-    Quotations,
+    QuoteList,
 )
 
 # *** tests
@@ -128,19 +128,34 @@ def test_quote_requires_price_and_source() -> None:
     with pytest.raises(ValidationError):
         Quote(symbol_id='SPY', price=680.0)
 
-# ** test: quotations_defaults
-def test_quotations_defaults() -> None:
+# ** test: quote_list_defaults
+def test_quote_list_defaults() -> None:
     '''
-    Test that empty quotations has no quotes, symbols, warnings or failures.
+    Test that an empty quote list has no quotes, symbols, warnings or failures.
     '''
 
-    quotations = Quotations()
+    quotes = QuoteList()
 
-    assert quotations.quotes == {}
-    assert quotations.symbols == {}
-    assert quotations.warnings == []
-    assert quotations.failures == []
-    assert quotations.fetched_at is None
+    assert quotes.quotes == []
+    assert quotes.symbols == {}
+    assert quotes.warnings == []
+    assert quotes.failures == []
+    assert quotes.fetched_at is None
+
+# ** test: quote_list_get_quote
+def test_quote_list_get_quote() -> None:
+    '''
+    Test that a quote list keeps request order and finds a quote by symbol id.
+    '''
+
+    quotes = QuoteList(
+        quotes=[Quote(symbol_id='SPY', price=680.0, source='static'), Quote(symbol_id='AAPL', price=250.0, source='static')],
+        failures=[QuoteFailure(symbol_id='NOPE', reason='not_found')],
+    )
+
+    assert [quote.symbol_id for quote in quotes.quotes] == ['SPY', 'AAPL']
+    assert quotes.get_quote('AAPL').price == 250.0
+    assert quotes.get_quote('NOPE') is None
 
 # *** testers
 

@@ -25,7 +25,7 @@ The domain has two fixed shapes:
 
 It has four axes of variation:
 
-1. **Market data provider** - where quotes, daily history and symbol details come from. The Yahoo chart provider is the configured default; a static provider serves tests; further providers (a second public source, a paid feed) are later additions. Each brings its own endpoint, failure modes and code maps.
+1. **Market data provider** - where quotes, daily history and symbol details come from. The Yahoo provider is the configured default (quotes from the batch quote endpoint, history and symbol details from the chart endpoint); a static provider serves tests; further providers (a second public source, a paid feed) are later additions. Each brings its own endpoint, failure modes and code maps.
 2. **Listing vocabulary** - the set of exchange ids and asset types the domain recognizes, and each provider's map onto them. In v1 the exchanges are NYSE, NASDAQ, NYSE_ARCA, CBOE_BZX and NYSE_AMERICAN, and the asset types are equity, etf, mutual_fund and money_market_fund.
 3. **Watchlist file format** - YAML or JSON, chosen by the file extension. The starter file is YAML.
 4. **Caller surface** - a program calling a feature directly, or the CLI.
@@ -68,7 +68,7 @@ Everything else is identical across the axes.
 
 **Quote failure** - a named reason a symbol produced no result: not_found, http_error, timeout, bad_payload or symbol_mismatch, with detail and the number of attempts. Only symbol resolution reports symbol_mismatch, when the symbol exists but its ticker or exchange differs from the expected one; detail carries the expected and actual values. The quote path never reports it.
 
-**Quote set** - one quote call's answer: quotes by symbol id, symbols filled from the same response, warnings, failures and the fetch time.
+**Quote list** (`QuoteList`) - one quote call's answer: a list of quotes in request order, one per id that produced a quote, a quote failure for every id that did not (an id the provider omits is not_found), symbols filled from the same response by requested id, warnings and the fetch time. Providers return it as `QuoteListAggregate`.
 
 **Symbol lookup** - one lookup call's answer: symbols by id, warnings and failures.
 
@@ -88,7 +88,7 @@ The domain operates on five inputs.
 
 **Requests**: a feature id plus its data, from a program or the CLI. Read requests name one or more tickers, and optionally an expected exchange per ticker or a date range. Change requests name one watchlist and one operation.
 
-**Provider responses**: the source's answer per ticker. The Yahoo chart response carries currency, an exchange code, an instrument type and names in its metadata, and prices in its series. Responses are read once per call and discarded.
+**Provider responses**: the source's answer per ticker. Quotes come from Yahoo's v7 batch quote endpoint in one request for the whole list: each result row carries the price (`regularMarketPrice`), previous close (`regularMarketPreviousClose`), market time, currency, an exchange code, a quote type and names, and a ticker Yahoo does not know is simply omitted. That endpoint answers HTTP 401 without an anonymous session: an A3 cookie from `fc.yahoo.com` and a crumb from `/v1/test/getcrumb`, which the provider fetches once and reuses. History and symbol details come from the chart endpoint, one ticker per request, whose metadata carries the same codes and names and whose series carries the daily prices. Responses are read once per call and discarded.
 
 **The watchlists file**: YAML or JSON, read through `ConfigurationRepository._load` with a start node (`tiferet/repos/core.py:87`) and written whole through `_save` (`tiferet/repos/core.py:109`). The loader is chosen by extension: `.yaml` or `.yml` gets the YAML loader and `.json` the JSON loader (`tiferet/repos/core.py (57-84)`).
 
@@ -122,7 +122,7 @@ Verdict: **variable** on axes 1 and 2; this is the edge of the domain by design.
 
 *Return the latest quote for each requested ticker, with every miss named.*
 
-Planned event: `GetQuotes` on the price service. The default provider tries each ticker, retries once on failure, and records a quote or a quote failure; endpoint URLs, timeout and retry count are provider parameters that configuration can override. The event raises the catalogued error QUOTES_UNAVAILABLE only when every ticker fails; partial failure is data, not an exception. Symbols in the same response are filled into the quote set. The event applies the same outbound alias as symbol lookup before calling the price service, and re-keys quotes, symbols, warnings and failures to the canonical ticker; the price service itself is alias-free.
+Planned event: `GetQuotes` on the price service, returning a quote list. The default provider requests the whole distinct list in one call to the batch quote endpoint under its anonymous session, retries the whole batch once on a transient failure (a rejected session is dropped and reopened; HTTP 429 is not retried), and records a quote or a quote failure for every id: an omitted ticker is not_found, a row without a usable price is bad_payload, and a batch that still fails after the retry records timeout or http_error on every id. Endpoint URLs (batch quote, cookie host, crumb, chart and history), timeout, retry count and the quote source stamp (default `yahoo_quote`) are provider parameters that configuration can override. An empty request makes no provider call. The event raises the catalogued error QUOTES_UNAVAILABLE only when every ticker fails; partial failure is data, not an exception. Symbols in the same response are filled into the quote list. The event applies the same outbound alias as symbol lookup before calling the price service, and re-keys quotes, symbols, warnings and failures to the canonical ticker; the price service itself is alias-free.
 
 Verdict: **agnostic** in pipeline and failure reporting; **variable** on axis 1.
 
@@ -216,7 +216,7 @@ Entanglement inventory (risks in the planned shape):
 - Domain objects coerce numbers to strings (`tiferet/domain/core.py:235`). Numeric provider fields must be declared as numbers on quotes and bars, or a price could arrive as a string.
 - Core has no timestamp convention: no `created_at` or `updated_at` appears under `tiferet/domain` or `tiferet/mappers` at 4896542. The watchlist timestamps and the upsert rule are local to this package.
 - Testing support in Tiferet 2.2 is limited. The tester types are domain, aggregate, transfer_object, domain_event, service_event, generic, repo and context (`tiferet/domain/tester.py (49-58)`); the repo tester assumes a configuration-file repository (`tiferet/contexts/tester.py (1062-1066)`), and there is no tester for a network provider, so provider tests need plain pytest with recorded responses and helpers in this package. Tiferet 2.2.1 work is under way (main carries 2.2.0 and the latest prerelease is 2.2.1b1), and a later 2.2.x can land inside the `>=2.2,<2.3` pin, so tester behavior may shift under a passing build.
-- The Yahoo chart endpoint is unofficial; only recorded-response tests and an opt-in live check guard against format drift.
+- The Yahoo chart and batch quote endpoints are unofficial; only recorded-response tests and an opt-in live check guard against format drift. The batch quote endpoint also depends on the anonymous cookie and crumb: it answers 401 without them, and a second crumb fetch in a short window can answer 429, so the session is reused and a 429 is not retried within a call.
 
 ## 9. Boundaries
 
@@ -235,8 +235,8 @@ Outside the domain:
 Candidate changes, each scoped for its own RFP or TRD:
 
 1. Symbol vocabulary: Symbol, the `EXCHANGES` and `ASSET_TYPES` constants, and the symbol warning, with domain tests for every allowed and rejected value.
-2. Quote models and contracts: quote, price bar, quote failure, quote set and symbol lookup, plus the price service and symbol lookup service.
-3. The Yahoo chart provider: quotes, daily history and symbol details from one endpoint, one retry, named failures, and the exchange and asset-type code maps, tested with recorded responses and one opt-in live check.
+2. Quote models and contracts: quote, price bar, quote failure, quote list and symbol lookup, plus the price service and symbol lookup service.
+3. The Yahoo provider: quotes from the batch quote endpoint in one request under an anonymous session, daily history and symbol details from the chart endpoint, one retry, named failures, and the exchange and asset-type code maps, tested with recorded responses and one opt-in live check.
 4. The static provider for tests: prices from a mapping, a YAML or JSON file, or CSV daily bars.
 5. Symbol events: GetSymbol, ResolveSymbols and ListExchanges, with expected-exchange checks.
 6. Quote events: GetQuotes, with QUOTES_UNAVAILABLE only when every ticker fails, and GetHistory, with HISTORY_UNAVAILABLE when its one ticker fails.
