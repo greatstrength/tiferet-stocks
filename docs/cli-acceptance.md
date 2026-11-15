@@ -1,6 +1,6 @@
 # RFP-005 CLI acceptance
 
-Scope: issue #6's thirteen configured commands, unchanged feature ids and domain behavior, on Tiferet 2.2.2b1 (a pre-release; a plain install resolves 2.2.1, and both are tested). The Chief resolved installed discovery to CWD config.yml or --config, selected per-symbol output retaining all warnings/failures, and approved composing the existing public lower-level CLI factories because the released one-call builder hardwires its parser/request context. These are local implementation checks for Saito/QA, not QA approval or checked issue boxes.
+Scope: issue #6's thirteen commands, seeded from packaged assets into the bootstrap cache, with unchanged feature ids and domain behavior, on Tiferet 2.2.3 or a later 2.2 final (`tiferet>=2.2.3,<2.3`). With no config.yml the CLI runs from the cache; a config.yml in the working directory, or one named with --config, is optional and its configured items take precedence. The Chief selected per-symbol output retaining all warnings/failures, and approved composing the existing public lower-level CLI factories because the released one-call builder hardwires its parser/request context. These are local implementation checks for Saito/QA, not QA approval or checked issue boxes.
 
 ## Twelve criteria
 

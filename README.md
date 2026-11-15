@@ -2,7 +2,7 @@
 
 ## Install
 
-The package requires `tiferet>=2.2,<2.3`. A plain `pip install tiferet-stocks` (or `pip install .` from a checkout) resolves the latest final Tiferet 2.2 release, 2.2.1 at this writing. `pip install --pre tiferet-stocks` lets pip choose the Tiferet 2.2.2b1 pre-release, which the package is also tested against. The pin is the same either way; `--pre` only allows pre-releases inside it.
+The package requires `tiferet>=2.2.3,<2.3`. A plain `pip install tiferet-stocks` (or `pip install .` from a checkout) resolves the latest final Tiferet 2.2 release at or above 2.2.3.
 
 ## Watchlist storage
 

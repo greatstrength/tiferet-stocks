@@ -189,7 +189,7 @@ Validation of a symbol is on id and exchange: the exchange must be in `EXCHANGES
 
 Toward tiferet-ledger: ledger depends on this package, never the reverse. Ledger records point at symbols by ticker. Which ETF stands for which market sector (the benchmark map) is portfolio bookkeeping and belongs in ledger; this package only resolves and quotes benchmark ETFs like any other symbol, and a benchmarks watchlist is ordinary watchlist data.
 
-Toward tiferet core: this package adds domain objects, services, events, errors and CLI commands, and relies on core for feature execution, dependency wiring, configuration loading and the error catalog. It depends on `tiferet>=2.2,<2.3` and on no SQL machinery; core's SQLite contract and events (`tiferet/interfaces/sqlite.py:15`, `tiferet/events/sqlite.py:56`, `tiferet/events/sqlite.py:101`) are deliberately unused.
+Toward tiferet core: this package adds domain objects, services, events, errors and CLI commands, and relies on core for feature execution, dependency wiring, configuration loading and the error catalog. It depends on `tiferet>=2.2.3,<2.3` and on no SQL machinery; core's SQLite contract and events (`tiferet/interfaces/sqlite.py:15`, `tiferet/events/sqlite.py:56`, `tiferet/events/sqlite.py:101`) are deliberately unused.
 
 Toward release: tests run in CI on pull requests and pushes to main, and the package publishes to PyPI when a GitHub release is published, using PyPI trusted publishing. Both are copied from core's `.github/workflows/test.yml` and `.github/workflows/python-publish.yml`; the publish job checks the release tag against the package version before building (`.github/workflows/python-publish.yml (53-60)`).
 
@@ -215,7 +215,7 @@ Entanglement inventory (risks in the planned shape):
 - An empty exchange is overloaded (fund versus unmapped listing). The warning is the only carrier of the raw code, and it lives in the call's answer, not on the symbol; a consumer that keeps symbols but drops warnings loses the distinction.
 - Domain objects coerce numbers to strings (`tiferet/domain/core.py:235`). Numeric provider fields must be declared as numbers on quotes and bars, or a price could arrive as a string.
 - Core has no timestamp convention: no `created_at` or `updated_at` appears under `tiferet/domain` or `tiferet/mappers` at 4896542. The watchlist timestamps and the upsert rule are local to this package.
-- Testing support in Tiferet 2.2 is limited. The tester types are domain, aggregate, transfer_object, domain_event, service_event, generic, repo and context (`tiferet/domain/tester.py (49-58)`); the repo tester assumes a configuration-file repository (`tiferet/contexts/tester.py (1062-1066)`), and there is no tester for a network provider, so provider tests need plain pytest with recorded responses and helpers in this package. Tiferet 2.2.1 work is under way (main carries 2.2.0 and the latest prerelease is 2.2.1b1), and a later 2.2.x can land inside the `>=2.2,<2.3` pin, so tester behavior may shift under a passing build.
+- Testing support in Tiferet 2.2 is limited. The tester types are domain, aggregate, transfer_object, domain_event, service_event, generic, repo and context (`tiferet/domain/tester.py (49-58)`); the repo tester assumes a configuration-file repository (`tiferet/contexts/tester.py (1062-1066)`), and there is no tester for a network provider, so provider tests need plain pytest with recorded responses and helpers in this package. The package requires Tiferet 2.2.3 or a later 2.2 final (`>=2.2.3,<2.3`); a later 2.2.x can land inside the pin, so tester behavior may shift under a passing build.
 - The Yahoo chart and batch quote endpoints are unofficial; only recorded-response tests and an opt-in live check guard against format drift. The batch quote endpoint also depends on the anonymous cookie and crumb: it answers 401 without them, and a second crumb fetch in a short window can answer 429, so the session is reused and a 429 is not retried within a call.
 
 ## 9. Boundaries
@@ -244,4 +244,4 @@ Candidate changes, each scoped for its own RFP or TRD:
 8. The watchlist repository on `ConfigurationRepository`, with a YAML starter file and JSON support by extension.
 9. Watchlist events and their catalogued errors, checking with `verify` before calling the aggregate.
 10. The reporting CLI and the watchlist command wrappers, on core's CLI blueprint.
-11. Packaging and release: the `tiferet>=2.2,<2.3` dependency, CI tests and build check, and PyPI trusted publishing on a GitHub release, modeled on core's two workflows.
+11. Packaging and release: the `tiferet>=2.2.3,<2.3` dependency, CI tests and build check, and PyPI trusted publishing on a GitHub release, modeled on core's two workflows.

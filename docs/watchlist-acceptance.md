@@ -1,6 +1,6 @@
 # TSTK1-RFP-004 Watchlist Acceptance Packet
 
-Scope: issue [#5](https://github.com/greatstrength/tiferet-stocks/issues/5), prototype implementation only. No version/dependency change, pytest retirement, tester API, history/Quotations change or release action is included. The authoritative runtime baseline is the Tiferet 2.2.2b1 pre-release, installed in an isolated environment.
+Scope: issue [#5](https://github.com/greatstrength/tiferet-stocks/issues/5), prototype implementation only. No version/dependency change, pytest retirement, tester API, history/Quotations change or release action is included. The authoritative runtime baseline is Tiferet 2.2.3 or a later 2.2 final (`tiferet>=2.2.3,<2.3`), installed in an isolated environment.
 
 ## Decisions applied
 
@@ -65,7 +65,7 @@ The subprocess probe installs a Python audit hook that inspects write-mode open 
 
 ## Reproduction
 
-From the branch worktree, run `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` in an environment with the package and Tiferet installed. Focused final acceptance: append `tests/test_watchlist_acceptance.py`. The optional older 2.2.0 run is compatibility evidence only, not the release baseline. The subprocess tests use the invoking interpreter, so they cannot silently fall back to another Tiferet version.
+From the branch worktree, run `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` in an environment with the package and Tiferet installed. Focused final acceptance: append `tests/test_watchlist_acceptance.py`. The subprocess tests use the invoking interpreter, so they cannot silently fall back to another Tiferet version.
 
 ## Remaining review boundaries
 

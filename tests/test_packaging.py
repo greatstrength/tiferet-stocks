@@ -17,7 +17,7 @@ from packaging.version import Version
 ROOT_PATH = Path(__file__).resolve().parents[1]
 
 # ** constant: tiferet_pin
-TIFERET_PIN = 'tiferet>=2.2,<2.3'
+TIFERET_PIN = 'tiferet>=2.2.3,<2.3'
 
 # *** functions
 
@@ -45,18 +45,18 @@ def test_tiferet_pin_matches_documented_pin() -> None:
     assert tiferet_requirement() == Requirement(TIFERET_PIN)
     assert f'`{TIFERET_PIN}`' in (ROOT_PATH / 'README.md').read_text()
 
-# ** test: pin_admits_final_and_pre_release
-def test_tiferet_pin_admits_final_and_pre_release() -> None:
+# ** test: pin_floor_is_2_2_3
+def test_tiferet_pin_floor_is_2_2_3() -> None:
     '''
-    Admit the 2.2.1 final and the 2.2.2b1 pre-release; exclude 2.1 and 2.3.
+    Admit 2.2.3 and later 2.2 releases; exclude 2.2.1, 2.2.2b1, 2.2.2, 2.1 and 2.3.
     '''
 
     specifier = tiferet_requirement().specifier
 
-    assert Version('2.2.1') in specifier
-    assert specifier.contains('2.2.2b1', prereleases=True)
-    assert not specifier.contains('2.1.9', prereleases=True)
-    assert not specifier.contains('2.3.0', prereleases=True)
+    assert Version('2.2.3') in specifier
+    assert Version('2.2.9') in specifier
+    for excluded in ('2.2.1', '2.2.2b1', '2.2.2', '2.1.9', '2.3.0'):
+        assert not specifier.contains(excluded, prereleases=True), excluded
 
 # ** test: installed_tiferet_within_pin
 def test_installed_tiferet_within_pin() -> None:
