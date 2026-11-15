@@ -574,14 +574,22 @@ def test_no_config_symbols_report_canonical_ids_only(no_config, capsys) -> None:
     assert 'symbol_mismatch' not in got + resolved
 
 # ** test: no_config_explicit_missing
-def test_explicit_missing_config_fails(no_config) -> None:
+def test_explicit_missing_config_fails(no_config, capsys) -> None:
     '''
-    An explicit --config that does not exist is still a fault.
+    An explicit --config that does not exist prints the core FILE_NOT_FOUND error and exits 1, with no traceback.
     '''
 
-    with pytest.raises(ServiceError) as raised:
-        main(argv=['--config', 'nope.yml', 'exchanges', 'list'])
-    assert raised.value.error_code == FILE_NOT_FOUND_ID
+    missing = str((no_config / 'nope.yml').resolve())
+    with pytest.raises(SystemExit) as exited:
+        main(argv=['--config', missing, 'exchanges', 'list'])
+
+    assert exited.value.code == 1
+    captured = capsys.readouterr()
+    assert 'Traceback' not in captured.out + captured.err
+    error = json.loads(captured.err.strip().splitlines()[-1])
+    assert error['error_code'] == FILE_NOT_FOUND_ID
+    assert error['path'] == missing
+    assert missing in error['message']
 
 # ** test: installed_no_config
 def test_installed_console_with_no_config(installed_cli, tmp_path) -> None:

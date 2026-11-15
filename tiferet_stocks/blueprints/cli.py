@@ -4,6 +4,7 @@
 
 # ** core
 import argparse
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -341,40 +342,47 @@ def build_cli(app_config: str = 'config.yml', argv: list | None = None, required
 
     # The stocks session, services, features, errors, commands and aliases are seeded on the cache;
     # a session the app config declares takes precedence, and the cached session is the fallback.
-    config_path = str(Path(app_config).resolve())
-    cache = build_cache()
-    session = get_app_session(cache, config_path, required=required)
+    try:
+        config_path = str(Path(app_config).resolve())
+        cache = build_cache()
+        session = get_app_session(cache, config_path, required=required)
 
-    # Layer the services, the later definition winning: the cache, then the config's top-level services written over
-    # it here, then the session's services, which core's container build applies last.
-    for service in read_configured_services(config_path):
-        cache.set(service.service_id, service, *core_assets.app.APP_SERVICE_CACHE_PREFIX)
+        # Layer the services, the later definition winning: the cache, then the config's top-level services written over
+        # it here, then the session's services, which core's container build applies last.
+        for service in read_configured_services(config_path):
+            cache.set(service.service_id, service, *core_assets.app.APP_SERVICE_CACHE_PREFIX)
 
-    # Point all core configuration readers at the selected document.
-    session.constants = {
-        **(session.constants or {}),
-        **{key: config_path for key in core_assets.app.CORE_DEFAULT_CONSTANTS},
-    }
+        # Point all core configuration readers at the selected document.
+        session.constants = {
+            **(session.constants or {}),
+            **{key: config_path for key in core_assets.app.CORE_DEFAULT_CONSTANTS},
+        }
 
-    # Build the container/resolver and the stocks catalog handlers.
-    container = core.build_app_service_container(cache, app_instance=session)
-    resolver = build_service_resolver(container)
-    commands = list_commands_handler(cache, resolver.get_dependency)
-    parent_args = get_parent_args_handler(resolver.get_dependency)
-    parse = parse_cli_args_handler(list_commands=commands, get_parent_args=parent_args)
+        # Build the container/resolver and the stocks catalog handlers.
+        container = core.build_app_service_container(cache, app_instance=session)
+        resolver = build_service_resolver(container)
+        commands = list_commands_handler(cache, resolver.get_dependency)
+        parent_args = get_parent_args_handler(resolver.get_dependency)
+        parse = parse_cli_args_handler(list_commands=commands, get_parent_args=parent_args)
 
-    # Inject the request/presentation adapters through public composition.
-    context = core.compose_session_context(
-        CliSessionContext,
-        session,
-        cache,
-        resolver,
-        create_request_handler=create_cli_request_context,
-        response_handler=core.response_handler,
-        parse_cli_args=parse,
-        list_commands_handler=commands,
-        get_parent_args_handler=parent_args,
-    )
+        # Inject the request/presentation adapters through public composition.
+        context = core.compose_session_context(
+            CliSessionContext,
+            session,
+            cache,
+            resolver,
+            create_request_handler=create_cli_request_context,
+            response_handler=core.response_handler,
+            parse_cli_args=parse,
+            list_commands_handler=commands,
+            get_parent_args_handler=parent_args,
+        )
+
+    # A setup fault, such as an explicit --config that does not exist, never reaches context.run.
+    # Print and exit the way CliSessionContext.run does in tiferet 2.2.3 (contexts/cli.py:321-322).
+    except (TiferetError, ServiceError) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)
 
     # Core owns final printing, configured error handling and exit codes.
     return context.run(argv=argv)
